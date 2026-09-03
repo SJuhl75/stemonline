@@ -1,6 +1,6 @@
 FROM pytorch/pytorch:2.4.0-cuda12.4-cudnn9-runtime
 
-# System-Abhängigkeiten installieren (inkl. Node.js und rclone)
+# System-Abhängigkeiten installieren
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     git \
@@ -8,11 +8,17 @@ RUN apt-get update && apt-get install -y \
     curl \
     unzip \
     gnupg \
-    && curl -fsSL https://nodesource.com | bash - \
-    && apt-get install -y nodejs \
-    && curl https://rclone.org | bash \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# 1. Aktueller Node.js 20 Installationsweg für Ubuntu/Debian
+RUN mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://nodesource.com | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://nodesource.com nodistro main" | tee /etc/apt/keyrings/nodesource.list \
+    && apt-get update && apt-get install nodejs -y
+
+# 2. Aktueller Rclone Installationsweg
+RUN curl https://rclone.org | bash
 
 # Demucs, Gradio und das offizielle stemgen-Repository installieren
 RUN pip install --no-cache-dir demucs gradio yt-dlp
