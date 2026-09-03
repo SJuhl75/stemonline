@@ -1,35 +1,30 @@
 FROM pytorch/pytorch:2.4.0-cuda12.4-cudnn9-runtime
 
-# System-Abhängigkeiten und rclone direkt installieren
+# System-Abhängigkeiten, rclone, sox und gpac (für das Traktor m4a Muxen) installieren
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     git \
     wget \
     curl \
     unzip \
-    gnupg \
     rclone \
+    sox \
+    gpac \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Aktueller Node.js 20 Installationsweg für Ubuntu
-RUN mkdir -p /etc/apt/keyrings \
-    && curl -fsSL https://nodesource.com | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
-    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://nodesource.com nodistro main" | tee /etc/apt/sources.list.d/nodesource.list \
-    && apt-get update && apt-get install nodejs -y
+# Die von Stemgen benötigten Python-Pakete direkt installieren
+RUN pip install --no-cache-dir demucs gradio yt-dlp mutagen
 
-# Demucs, Gradio und das offizielle stemgen-Repository installieren
-RUN pip install --no-cache-dir demucs gradio yt-dlp
-# HIER WAR DER FEHLER (jetzt mit dem korrekten GitHub-Pfad zu stemgen):
-RUN git clone https://github.com /opt/stemgen \
-    && cd /opt/stemgen && pip install -r requirements.txt
+# Stemgen-Repository klonen (Jetzt ohne den fehlerhaften Anforderungen-Aufruf!)
+RUN git clone https://github.com/axeldelafosse/stemgen.git /opt/stemgen
 
-# Ports freigeben
+# Port für das Gradio WebUI freigeben
 EXPOSE 7860
 
 WORKDIR /workspace
 
-# Dateien kopieren
+# Pipeline-Dateien in den Container kopieren
 COPY app.py /workspace/app.py
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
