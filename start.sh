@@ -1,17 +1,45 @@
-#!/bin/bash 
-echo "=== Konfiguriere MagentaCloud WebDAV Verbindung ==="
+#!/usr/bin/env bash
 
-# rclone Config-Ordner erstellen
-mkdir -p ~/.config/rclone/ 
+set -euo pipefail
 
-# Erstellt die verschlüsselte Verbindung on-the-fly beim Start des Pods
-cat <<EOF > ~/.config/rclone/rclone.conf
+echo "=== Konfiguriere MagentaCloud-WebDAV-Verbindung ==="
+
+if [[ -z "${MAGENTA_USER:-}" ]]; then
+    echo "Fehler: MAGENTA_USER ist nicht gesetzt."
+    exit 1
+fi
+
+if [[ -z "${MAGENTA_PASS_OBFUSCATED:-}" ]]; then
+    echo "Fehler: MAGENTA_PASS_OBFUSCATED ist nicht gesetzt."
+    exit 1
+fi
+
+export RCLONE_CONFIG=/workspace/rclone/rclone.conf
+
+mkdir -p "$(dirname "$RCLONE_CONFIG")"
+
+cat > "$RCLONE_CONFIG" <<EOF
 [magentacloud]
 type = webdav
 url = https://magentacloud.de
-user = $MAGENTA_USER
-pass = $MAGENTA_PASS_OBFUSCATED
+user = ${MAGENTA_USER}
+pass = ${MAGENTA_PASS_OBFUSCATED}
 EOF
 
-echo "=== Starte Custom DJ-Stem-Pipeline WebUI ==="
-python /workspace/app.py
+chmod 600 "$RCLONE_CONFIG"
+
+echo "=== Prüfe installierte Komponenten ==="
+
+command -v yt-dlp
+command -v deno
+command -v rclone
+
+echo "yt-dlp-Version:"
+yt-dlp --version
+
+echo "Deno-Version:"
+deno --version
+
+echo "=== Starte Custom DJ-Stem-Pipeline-WebUI ==="
+
+exec python /workspace/app.py

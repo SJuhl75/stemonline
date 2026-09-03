@@ -1,0 +1,16 @@
+.git
+.gitignore
+__pycache__
+*.pyc
+*.pyo
+*.mp3
+*.wav
+*.m4a
+*.flac
+models
+cache
+output
+outputs
+venv
+.env
+*.log

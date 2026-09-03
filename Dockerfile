@@ -1,41 +1,74 @@
 FROM pytorch/pytorch:2.4.0-cuda12.4-cudnn9-runtime
 
-# System-Abhängigkeiten, rclone, sox und gpac (für das Traktor m4a Muxen) installieren
-RUN apt-get update && apt-get install -y \
-    ffmpeg \
-    git \
-    wget \
-    curl \
-    unzip \
-    gnupg \
-    rclone \
-    sox \
-    gpac \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    DENO_INSTALL=/usr/local \
+    TORCH_HOME=/workspace/cache/torch \
+    XDG_CACHE_HOME=/workspace/cache
 
-# Offiziellen Deno-Runtime-Installer für yt-dlp ausführen
-# Deno über die offizielle URL installieren und global verfügbar machen
-RUN curl -fsSL https://deno.land/install.sh | sh \
-    && mv /root/.deno/bin/deno /usr/local/bin/deno \
-    && chmod +x /usr/local/bin/deno
-#ENV DENO_INSTALL="/root/.local"
-#ENV PATH="$DENO_INSTALL/bin:$PATH"
+# Runtime-Pakete installieren, Stemgen klonen, anschließend Build-Werkzeuge entfernen
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ffmpeg \
+        rclone \
+        sox \
+        gpac \
+        curl \
+        unzip \
+        git && \
+    git clone --depth 1 \
+        https://github.com/axeldelafosse/stemgen.git \
+        /opt/stemgen && \
+    curl -fsSL https://deno.land/install.sh | sh && \
+    mv /root/.deno/bin/deno /usr/local/bin/deno && \
+    chmod +x /usr/local/bin/deno && \
+    apt-get purge -y \
+        curl \
+        unzip \
+        git && \
+    apt-get autoremove -y && \
+    apt-get clean && \
+    rm -rf \
+        /var/lib/apt/lists/* \
+        /root/.deno \
+        /tmp/*
 
-# Die von Stemgen benötigten Python-Pakete direkt installieren
-RUN pip install --no-cache-dir demucs gradio yt-dlp mutagen
+# Python-Abhängigkeiten installieren
+RUN python -m pip install --no-cache-dir \
+        demucs \
+        gradio \
+        yt-dlp \
+        mutagen
 
-# Stemgen-Repository klonen (Jetzt ohne den fehlerhaften Anforderungen-Aufruf!)
-RUN git clone https://github.com/axeldelafosse/stemgen.git /opt/stemgen
+# Prüfen, dass alle Komponenten vorhanden sind
+RUN python - <<'PY'
+import torch
+import demucs
+import gradio
+import yt_dlp
 
-# Port für das Gradio WebUI freigeben
-EXPOSE 7860
+print("Torch:", torch.__version__)
+print("CUDA verfügbar:", torch.cuda.is_available())
+print("Demucs:", demucs.__file__)
+print("Gradio:", gradio.__version__)
+print("yt-dlp:", yt_dlp.version.__version__)
+PY
+
+RUN deno --version
 
 WORKDIR /workspace
 
-# Pipeline-Dateien in den Container kopieren
 COPY app.py /workspace/app.py
 COPY start.sh /start.sh
-RUN chmod +x /start.sh
+
+RUN chmod +x /start.sh && \
+    mkdir -p \
+        /workspace/cache/torch \
+        /workspace/cache \
+        /workspace/jobs
+
+EXPOSE 7860
 
 CMD ["/start.sh"]
