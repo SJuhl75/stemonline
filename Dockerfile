@@ -38,6 +38,14 @@ RUN apt-get update && \
     git clone --depth 1 \
         https://github.com/axeldelafosse/stemgen.git \
         /opt/stemgen && \
+    mkdir -p /opt/deno/bin && \
+    curl -fsSL \
+        "https://github.com/denoland/deno/releases/download/v${DENO_VERSION}/deno-x86_64-unknown-linux-gnu.zip" \
+        -o /tmp/deno.zip && \
+    unzip -q /tmp/deno.zip -d /opt/deno/bin && \
+    chmod +x /opt/deno/bin/deno && \
+    /opt/deno/bin/deno --version && \
+    rm -f /tmp/deno.zip && \
     apt-get purge -y \
         curl \
         unzip \
@@ -46,20 +54,10 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf \
         /var/lib/apt/lists/* \
-        /tmp/*
-
-# Deno installieren
+        /tmp/*# Deno installieren
 #
 # Deno wird von yt-dlp für bestimmte YouTube-JavaScript-Szenarien benötigt.
-ARG DENO_VERSION=2.9.6
-
-RUN curl -fsSL \
-        "https://github.com/denoland/deno/releases/download/v${DENO_VERSION}/deno-x86_64-unknown-linux-gnu.zip" \
-        -o /tmp/deno.zip && \
-    unzip -q /tmp/deno.zip -d /opt/deno/bin && \
-    chmod +x /opt/deno/bin/deno && \
-    deno --version && \
-    rm -f /tmp/deno.zip
+#ARG DENO_VERSION=2.9.6
 
 # Pip aktualisieren
 RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel
