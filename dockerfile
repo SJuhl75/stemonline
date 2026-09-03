@@ -1,6 +1,6 @@
 FROM pytorch/pytorch:2.4.0-cuda12.4-cudnn9-runtime
 
-# System-Abhängigkeiten installieren
+# System-Abhängigkeiten und sudo installieren (wichtig für den rclone installer)
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     git \
@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     unzip \
     gnupg \
+    sudo \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -17,7 +18,7 @@ RUN mkdir -p /etc/apt/keyrings \
     && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://nodesource.com nodistro main" | tee /etc/apt/keyrings/nodesource.list \
     && apt-get update && apt-get install nodejs -y
 
-# 2. Aktueller Rclone Installationsweg
+# 2. Rclone über das offizielle Skript installieren (nutzt jetzt das installierte sudo)
 RUN curl https://rclone.org | bash
 
 # Demucs, Gradio und das offizielle stemgen-Repository installieren
