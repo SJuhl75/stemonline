@@ -4,11 +4,12 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    DENO_INSTALL=/usr/local \
+    DENO_INSTALL=/opt/deno \
+    PATH="/opt/deno/bin:${PATH}" \
     TORCH_HOME=/workspace/cache/torch \
     XDG_CACHE_HOME=/workspace/cache
 
-# Runtime-Pakete installieren, Stemgen klonen, anschließend Build-Werkzeuge entfernen
+# Runtime-Pakete installieren, Stemgen klonen und Deno installieren
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ffmpeg \
@@ -22,8 +23,8 @@ RUN apt-get update && \
         https://github.com/axeldelafosse/stemgen.git \
         /opt/stemgen && \
     curl -fsSL https://deno.land/install.sh | sh && \
-    mv /root/.deno/bin/deno /usr/local/bin/deno && \
-    chmod +x /usr/local/bin/deno && \
+    test -x /opt/deno/bin/deno && \
+    /opt/deno/bin/deno --version && \
     apt-get purge -y \
         curl \
         unzip \
@@ -32,7 +33,6 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf \
         /var/lib/apt/lists/* \
-        /root/.deno \
         /tmp/*
 
 # Python-Abhängigkeiten installieren
@@ -42,7 +42,7 @@ RUN python -m pip install --no-cache-dir \
         yt-dlp \
         mutagen
 
-# Prüfen, dass alle Komponenten vorhanden sind
+# Python-Installation prüfen
 RUN python - <<'PY'
 import torch
 import demucs
@@ -56,7 +56,9 @@ print("Gradio:", gradio.__version__)
 print("yt-dlp:", yt_dlp.version.__version__)
 PY
 
-RUN deno --version
+# Deno und yt-dlp prüfen
+RUN deno --version && \
+    yt-dlp --version
 
 WORKDIR /workspace
 
