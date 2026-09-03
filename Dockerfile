@@ -4,19 +4,20 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    PYTHONUNBUFFERED=1 \
     DENO_INSTALL=/opt/deno \
     PATH="/opt/deno/bin:${PATH}" \
     TORCH_HOME=/workspace/cache/torch \
     XDG_CACHE_HOME=/workspace/cache \
     APP_CODE_DIR=/workspace/code
 
+ARG DENO_VERSION=2.9.6
+
 WORKDIR /workspace
 
 # Systemabhängigkeiten installieren
 #
-# git, curl und unzip werden nur während des Builds benötigt.
-# Sie werden am Ende dieses RUN-Schritts wieder entfernt.
+# curl, unzip und git werden nur während des Builds benötigt.
+# Sie werden nach ihrer Verwendung wieder entfernt.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         python3.10 \
@@ -39,8 +40,8 @@ RUN apt-get update && \
         https://github.com/axeldelafosse/stemgen.git \
         /opt/stemgen && \
     mkdir -p /opt/deno/bin && \
-    curl -fsSL \
-        "https://github.com/denoland/deno/releases/download/v${DENO_VERSION}/deno-x86_64-unknown-linux-gnu.zip" \
+    curl -fL \
+        "https://dl.deno.land/release/v${DENO_VERSION}/deno-x86_64-unknown-linux-gnu.zip" \
         -o /tmp/deno.zip && \
     unzip -q /tmp/deno.zip -d /opt/deno/bin && \
     chmod +x /opt/deno/bin/deno && \
@@ -54,37 +55,43 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf \
         /var/lib/apt/lists/* \
-        /tmp/*# Deno installieren
-#
-# Deno wird von yt-dlp für bestimmte YouTube-JavaScript-Szenarien benötigt.
-#ARG DENO_VERSION=2.9.6
+        /tmp/*
 
 # Pip aktualisieren
-RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel
+RUN python -m pip install \
+        --no-cache-dir \
+        --upgrade \
+        pip \
+        setuptools \
+        wheel
 
-# PyTorch für CUDA 12.4 installieren
-RUN python -m pip install --no-cache-dir \
+# PyTorch und TorchAudio für CUDA 12.4 installieren
+RUN python -m pip install \
+        --no-cache-dir \
         torch==2.4.0 \
         torchaudio==2.4.0 \
         --index-url https://download.pytorch.org/whl/cu124
 
 # Python-Anwendungsabhängigkeiten installieren
+#
+# requirements.txt liegt im selben Verzeichnis wie das Dockerfile.
 COPY requirements.txt /tmp/requirements.txt
 
-RUN python -m pip install --no-cache-dir \
+RUN python -m pip install \
+        --no-cache-dir \
         -r /tmp/requirements.txt
 
 # Installation überprüfen
 #
 # CUDA ist während eines normalen Docker-Builds normalerweise nicht verfügbar.
-# Daher ist "CUDA verfügbar: False" an dieser Stelle normal.
+# Deshalb ist "CUDA während Build verfügbar: False" hier normal.
 RUN python - <<'PY'
 import torch
+import torchaudio
 import demucs
 import gradio
 import yt_dlp
 import bs_roformer
-import torchaudio
 import watchfiles
 
 print("Torch:", torch.__version__)
@@ -98,26 +105,30 @@ print("BS-RoFormer:", bs_roformer.__file__)
 print("watchfiles:", watchfiles.__file__)
 PY
 
+# Systemprogramme überprüfen
 RUN deno --version && \
     yt-dlp --version && \
     ffmpeg -version | head -n 1 && \
     sox --version && \
     rclone version | head -n 1
 
-# Standardcode an einem Ort außerhalb des Runtime-Codeverzeichnisses ablegen
+# Verzeichnisse vorbereiten
 #
-# /workspace/code kann später per WebSSH oder Network Volume geändert werden.
+# /workspace/code kann später über WebSSH oder ein Runpod-Network-Volume
+# bearbeitet werden.
 RUN mkdir -p \
         /opt/app-defaults \
         /workspace/code \
-        /workspace/cache/torch \
         /workspace/cache \
-        /workspace/jobs
+        /workspace/cache/torch \
+        /workspace/jobs \
+        /workspace/rclone
 
+# Standardcode außerhalb des Runtime-Codeverzeichnisses ablegen
 COPY app.py /opt/app-defaults/app.py
 COPY start.sh /opt/app-defaults/start.sh
 
-# Startskript im Image
+# Startskript ins Image kopieren
 COPY start.sh /start.sh
 
 RUN chmod +x \
