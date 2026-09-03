@@ -6,6 +6,8 @@ APP_CODE_DIR="${APP_CODE_DIR:-/workspace/code}"
 DEFAULT_CODE_DIR="/opt/app-defaults"
 APP_FILE="${APP_CODE_DIR}/app.py"
 RCLONE_CONFIG_FILE="/workspace/rclone/rclone.conf"
+MAGENTA_WEBDAV_URL="${MAGENTA_WEBDAV_URL:-https://magentacloud.de/remote.php/webdav/}"
+
 
 echo "=== Starte Stemgen-Pipeline ==="
 
@@ -37,11 +39,11 @@ else
         cat > "${RCLONE_CONFIG_FILE}" <<EOF
 [magentacloud]
 type = webdav
-url = https://magentacloud.de
+url = ${MAGENTA_WEBDAV_URL}
+vendor = other
 user = ${MAGENTA_USER}
 pass = ${MAGENTA_PASS_OBFUSCATED}
 EOF
-
         chmod 600 "${RCLONE_CONFIG_FILE}"
         export RCLONE_CONFIG="${RCLONE_CONFIG_FILE}"
     fi

@@ -1,0 +1,10 @@
+engine-stems-report.txt
+engine-dj-report.txt
+Engine Library/
+*.db
+*.db-journal
+*.stems
+*.stem.m4a
+*.mp3
+*.wav
+*.flac
