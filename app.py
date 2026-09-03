@@ -1,4 +1,5 @@
 import os
+os.environ["MKL_THREADING_LAYER"] = "GNU"
 import subprocess
 import gradio as gr
 import shutil

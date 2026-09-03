@@ -7,11 +7,17 @@ RUN apt-get update && apt-get install -y \
     wget \
     curl \
     unzip \
+    gnupg \
     rclone \
     sox \
     gpac \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Offiziellen Deno-Runtime-Installer für yt-dlp ausführen
+RUN curl -fsSL https://deno.land | sh
+ENV DENO_INSTALL="/root/.local"
+ENV PATH="$DENO_INSTALL/bin:$PATH"
 
 # Die von Stemgen benötigten Python-Pakete direkt installieren
 RUN pip install --no-cache-dir demucs gradio yt-dlp mutagen
