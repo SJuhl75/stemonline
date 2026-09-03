@@ -28,6 +28,7 @@ RUN apt-get update && \
         sox \
         libsox-fmt-all \
         gpac \
+        libjpeg62 \
         rclone \
         curl \
         unzip \
@@ -53,9 +54,30 @@ RUN apt-get update && \
         git && \
     apt-get autoremove -y && \
     apt-get clean && \
+    ldconfig && \
     rm -rf \
         /var/lib/apt/lists/* \
         /tmp/*
+
+RUN python3.10 - <<'PY'
+from pathlib import Path
+
+path = Path("/opt/stemgen/stemgen/cli.py")
+text = path.read_text()
+
+text = text.replace(
+    "subprocess.run(stem_args)",
+    "subprocess.run(stem_args, check=True)",
+)
+
+text = text.replace(
+    "        subprocess.run(cmd)\n",
+    "        subprocess.run(cmd, check=True)\n",
+)
+
+path.write_text(text)
+print("Stemgen cli.py wurde gepatcht.")
+PY
 
 # Pip aktualisieren
 RUN python -m pip install \

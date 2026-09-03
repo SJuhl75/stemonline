@@ -15,18 +15,10 @@ import gradio as gr
 STEMGEN_DIR = "/opt/stemgen"
 WORK_DIR = "/workspace"
 
-
 MODEL_NAMES = {
     "BS RoFormer": "bs_roformer",
     "Demucs": "htdemucs",
 }
-
-
-OUTPUT_FORMATS = {
-    "AAC – klein und kompatibel": "aac",
-    "ALAC – verlustfrei und groß": "alac",
-}
-
 
 def run_command(command, cwd=None, description="Befehl"):
     """
@@ -64,32 +56,22 @@ def process_pipeline(
     youtube_url,
     cloud_folder,
     separator_model,
-    output_format_label,
     progress=gr.Progress(),
 ):
-    if not youtube_url or not youtube_url.strip():
-        return "Bitte gib einen gültigen YouTube-Link ein."
-
     model_name = MODEL_NAMES.get(
         separator_model,
         "bs_roformer",
     )
-
-    output_format = OUTPUT_FORMATS.get(
-        output_format_label,
-        "aac",
-    )
+    if not youtube_url or not youtube_url.strip():
+        return "Bitte gib einen gültigen YouTube-Link ein."
 
     job_dir = None
 
     try:
         # Separates Verzeichnis pro Auftrag
-        jobs_dir = os.path.join(WORK_DIR, "jobs")
-        os.makedirs(jobs_dir, exist_ok=True)
-
         job_dir = tempfile.mkdtemp(
             prefix="stemgen_job_",
-            dir=jobs_dir,
+            dir=os.path.join(WORK_DIR, "jobs"),
         )
 
         download_dir = os.path.join(job_dir, "downloads")
@@ -101,10 +83,7 @@ def process_pipeline(
         # ------------------------------------------------------------
         # 1. Audio mit yt-dlp herunterladen
         # ------------------------------------------------------------
-        progress(
-            0.1,
-            desc="Lade Audio von YouTube via yt-dlp herunter ...",
-        )
+        progress(0.1, desc="Lade Audio von YouTube via yt-dlp herunter ...")
 
         yt_cmd = [
             "yt-dlp",
@@ -112,7 +91,7 @@ def process_pipeline(
             # Keine Playlists herunterladen
             "--no-playlist",
 
-            # Deno für YouTube-JavaScript-Szenarien verwenden
+            # Deno statt Node verwenden
             "--js-runtimes",
             "deno",
 
@@ -121,7 +100,7 @@ def process_pipeline(
             "--audio-format",
             "flac",
 
-            # Stemgen benötigt 44,1 kHz und Stereo
+            # 44,1 kHz / Stereo
             "--postprocessor-args",
             "ExtractAudio:-ar 44100 -ac 2",
 
@@ -154,31 +133,20 @@ def process_pipeline(
         # ------------------------------------------------------------
         progress(
             0.4,
-            desc=(
-                f"Erzeuge Stem-Datei mit {separator_model} "
-                f"im {output_format.upper()}-Format ..."
-            ),
+            desc="Erzeuge Native-Instruments-Stem-Datei ...",
         )
 
         stem_cmd = [
             "python",
             "stemgen.py",
-
             "-i",
             input_flac_path,
-
             "-o",
             output_dir,
-
-            # Erlaubte Stemgen-Formate: aac oder alac
             "-f",
-            output_format,
-
-            # Runpod-GPU verwenden
+            "alac",
             "-d",
             "cuda",
-
-            # Erlaubte Modellnamen: bs_roformer oder htdemucs
             "-n",
             model_name,
         ]
@@ -186,53 +154,25 @@ def process_pipeline(
         run_command(
             stem_cmd,
             cwd=STEMGEN_DIR,
-            description=(
-                f"Stemgen mit {separator_model} "
-                f"und {output_format.upper()}"
-            ),
+            description="Stemgen",
         )
 
-        # Stemgen verschiebt die fertige Datei normalerweise direkt
-        # in output_dir. Die rekursive Suche berücksichtigt zusätzlich
-        # mögliche Unterverzeichnisse.
         generated_files = glob.glob(
             os.path.join(output_dir, "**", "*.stem.m4a"),
             recursive=True,
         )
 
         if not generated_files:
-            all_output_files = []
-
-            for root, dirs, files in os.walk(output_dir):
-                for filename in files:
-                    file_path = os.path.join(root, filename)
-                    all_output_files.append(
-                        os.path.relpath(
-                            file_path,
-                            output_dir,
-                        )
-                    )
-
-            output_listing = (
-                "\n".join(all_output_files)
-                if all_output_files
-                else "(keine Dateien)"
-            )
-
             return (
                 "Stemgen wurde zwar beendet, aber es wurde keine "
-                ".stem.m4a-Datei gefunden.\n\n"
-                f"Modell: {separator_model}\n"
-                f"Format: {output_format.upper()}\n\n"
-                "Gefundene Dateien:\n"
-                f"{output_listing}"
+                ".stem.m4a-Datei gefunden."
             )
 
         generated_m4a = generated_files[0]
         generated_filename = os.path.basename(generated_m4a)
 
         # ------------------------------------------------------------
-        # 3. Upload mit rclone zur MagentaCloud
+        # 3. rclone-Konfiguration prüfen
         # ------------------------------------------------------------
         progress(
             0.8,
@@ -261,21 +201,17 @@ def process_pipeline(
         return (
             f"Erfolg!\n\n"
             f"Datei: {generated_filename}\n"
-            f"Modell: {separator_model}\n"
-            f"Format: {output_format.upper()}\n"
             f"Ziel: {target_path}"
         )
 
     except Exception as exc:
+        # Fehlermeldung wird im Gradio-Feld angezeigt
         return f"Fehler in der Pipeline:\n\n{exc}"
 
     finally:
-        # Temporäre Arbeitsdateien nach dem Auftrag entfernen
+        # Auch bei Fehlern temporäre Dateien entfernen
         if job_dir and os.path.exists(job_dir):
-            shutil.rmtree(
-                job_dir,
-                ignore_errors=True,
-            )
+            shutil.rmtree(job_dir, ignore_errors=True)
 
 
 with gr.Blocks(
@@ -310,20 +246,7 @@ with gr.Blocks(
                     "Demucs ist eine alternative Separation-Engine."
                 ),
             )
-
-            output_format = gr.Radio(
-                choices=[
-                    "AAC – klein und kompatibel",
-                    "ALAC – verlustfrei und groß",
-                ],
-                value="AAC – klein und kompatibel",
-                label="Ausgabeformat",
-                info=(
-                    "AAC ist deutlich kleiner und wird für den Denon-Test "
-                    "empfohlen. ALAC ist verlustfrei, aber wesentlich größer."
-                ),
-            )
-
+            
             cloud_dir = gr.Textbox(
                 label="MagentaCloud Zielordner",
                 placeholder="Musik/TraktorStems",
@@ -348,11 +271,9 @@ with gr.Blocks(
             yt_link,
             cloud_dir,
             separator_model,
-            output_format,
         ],
         outputs=status_output,
     )
-
 
 demo.launch(
     server_name="0.0.0.0",
