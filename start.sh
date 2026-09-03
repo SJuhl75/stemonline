@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash 
 echo "=== Konfiguriere MagentaCloud WebDAV Verbindung ==="
 
 # rclone Config-Ordner erstellen
