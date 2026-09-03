@@ -1,0 +1,8 @@
+torch==2.4.0
+torchaudio==2.4.0
+demucs
+gradio
+yt-dlp
+mutagen
+Lossless-BS-RoFormer
+watchfiles
