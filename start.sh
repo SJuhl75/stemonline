@@ -17,6 +17,7 @@ fi
 export RCLONE_CONFIG=/workspace/rclone/rclone.conf
 
 mkdir -p "$(dirname "$RCLONE_CONFIG")"
+mkdir -p /workspace/cache/torch
 
 cat > "$RCLONE_CONFIG" <<EOF
 [magentacloud]

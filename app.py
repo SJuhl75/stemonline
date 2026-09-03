@@ -15,6 +15,10 @@ import gradio as gr
 STEMGEN_DIR = "/opt/stemgen"
 WORK_DIR = "/workspace"
 
+MODEL_NAMES = {
+    "Lossless BS-RoFormer": "bs_roformer",
+    "Demucs": "htdemucs",
+}
 
 def run_command(command, cwd=None, description="Befehl"):
     """
@@ -48,7 +52,16 @@ def run_command(command, cwd=None, description="Befehl"):
     return result
 
 
-def process_pipeline(youtube_url, cloud_folder, progress=gr.Progress()):
+def process_pipeline(
+    youtube_url,
+    cloud_folder,
+    separator_model,
+    progress=gr.Progress(),
+):
+    model_name = MODEL_NAMES.get(
+        separator_model,
+        "bs_roformer",
+    )
     if not youtube_url or not youtube_url.strip():
         return "Bitte gib einen gültigen YouTube-Link ein."
 
@@ -134,6 +147,8 @@ def process_pipeline(youtube_url, cloud_folder, progress=gr.Progress()):
             "alac",
             "-d",
             "cuda",
+            "-n",
+            model_name,
         ]
 
         run_command(
@@ -219,6 +234,19 @@ with gr.Blocks(
                 placeholder="https://www.youtube.com/watch?v=...",
             )
 
+            separator_model = gr.Radio(
+                choices=[
+                    "BS RoFormer",
+                    "Demucs",
+                ],
+                value="Lossless BS-RoFormer",
+                label="Separation-Modell",
+                info=(
+                    "BS-RoFormer liefert in der Regel die bessere Qualität, "
+                    "Demucs ist meist kompatibler und benötigt weniger Zusatzpakete."
+                ),
+            )
+
             cloud_dir = gr.Textbox(
                 label="MagentaCloud Zielordner",
                 placeholder="Musik/TraktorStems",
@@ -239,10 +267,13 @@ with gr.Blocks(
 
     start_btn.click(
         fn=process_pipeline,
-        inputs=[yt_link, cloud_dir],
+        inputs=[
+            yt_link,
+            cloud_dir,
+            separator_model,
+        ],
         outputs=status_output,
     )
-
 
 demo.launch(
     server_name="0.0.0.0",

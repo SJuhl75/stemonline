@@ -40,7 +40,8 @@ RUN python -m pip install --no-cache-dir \
         demucs \
         gradio \
         yt-dlp \
-        mutagen
+        mutagen \
+        "Lossless-BS-RoFormer" 
 
 # Python-Installation prüfen
 RUN python - <<'PY'
@@ -54,6 +55,13 @@ print("CUDA verfügbar:", torch.cuda.is_available())
 print("Demucs:", demucs.__file__)
 print("Gradio:", gradio.__version__)
 print("yt-dlp:", yt_dlp.version.__version__)
+
+try:
+    import bs_roformer
+    print("BS-RoFormer:", bs_roformer.__file__)
+except ImportError as exc:
+    print("BS-RoFormer nicht importierbar:", exc)
+    raise
 PY
 
 # Deno und yt-dlp prüfen
