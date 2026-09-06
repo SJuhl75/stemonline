@@ -1,14 +1,29 @@
-# 🎧 Traktor Stemgen Pipeline
+# 🎧 Traktor & Denon (Engine DJ) Stemgen Pipeline
 
-Lädt Audio von YouTube herunter, trennt es in 4 Stems und erzeugt eine
-Native-Instruments `.stem.m4a`-Datei, die automatisch zur MagentaCloud
-hochgeladen wird.
+Lädt Audio von YouTube herunter, trennt es in 4 Stems und erzeugt sowohl eine 
+Native-Instruments `.stem.m4a`-Datei als auch eine Engine DJ-kompatible `.stems`-Datei 
+(im `.ddj`-Container). Das Ergebnis wird automatisch zur MagentaCloud hochgeladen.
 
 ## Pipeline
 
-1. **yt-dlp** lädt das Audio als FLAC (44,1 kHz / Stereo)
-2. **Stemgen** trennt den Track und muxt die `.stem.m4a`
-3. **rclone** lädt das Ergebnis zu MagentaCloud hoch
+1. **yt-dlp** lädt das Audio als FLAC (44,1 kHz / Stereo) inklusive Thumbnail
+2. **Audio-Normalisierung** (optional) bringt den Pegel auf ein einheitliches Level und bettet Metadaten sowie Artwork ein
+3. **Stemgen** trennt den Track in 4 Stems und muxt die `.stem.m4a`
+4. **Engine DJ Encoding** wandelt die 4 Stems in eine native (verschlüsselte) `.stems`-Datei um
+5. **Paketierung** verpackt alles in einen `.ddj`-Container (für DJ-Systeme)
+6. **rclone** lädt das Ergebnis zu MagentaCloud hoch
+
+## Eingebundene Projekte & Danksagungen
+
+Dieses Projekt wäre ohne die fantastische Arbeit der folgenden Open-Source-Repositories nicht möglich:
+
+### [Stemgen](https://github.com/axeldelafosse/stemgen) von Axel Delafosse
+**Beitrag:** Dieses Tool ist das Herzstück der Stems-Trennung. Es nutzt moderne KI-Modelle (BS RoFormer, Demucs), um den ursprünglichen Track in seine Bestandteile (Drums, Bass, Melody, Vocals) zu zerlegen. 
+**Referenz:** Wird im Dockerfile als `/opt/stemgen` geklont und in der Pipeline als `stemgen.py` ausgeführt.
+
+### [Engine DJ Stems Research](https://github.com/danielkinahan/engine-dj-stems-research) von Daniel Kinahan (basierend auf der Arbeit von Ryan Marsh)
+**Beitrag:** Dieses Projekt hat das native Engine DJ `.stems`-Format erfolgreich entschlüsselt. Das darin enthaltene `encode_stems.py`-Skript nimmt unsere 4 einzelnen Stems, kodiert sie als 8-Kanal-AAC, verschlüsselt sie mit AES-128-ECB (dem von Engine DJ verwendeten Verfahren) und verpackt sie in den nativen `.stems`-Container. Dadurch sind die Tracks auf DJ-Hardware wie dem PRIME 2 direkt abspielbar.
+**Referenz:** Wird im Dockerfile als `/opt/engine-dj-stems-research` geklont und in `app.py` innerhalb der Funktion `create_dj_aac_container` aufgerufen.
 
 ## Separation-Modelle
 
@@ -16,6 +31,14 @@ hochgeladen wird.
 |---|---|---|
 | BS RoFormer | höher | empfohlen, langsamer |
 | Demucs | gut | schneller, bewährt |
+
+## Ausgabeformate
+
+| Format | Beschreibung |
+|---|---|
+| AAC | Native-Instruments `.stem.m4a` mit verlustbehafteten Streams |
+| ALAC | Native-Instruments `.stem.m4a` mit verlustfreien Streams |
+| DJ-AAC (DDJ) | `.ddj`-Container mit Original-FLAC, vier separaten AAC-Dateien, Artwork und nativer Engine DJ `.stems`-Datei |
 
 ## Ports
 
@@ -49,28 +72,3 @@ WebSSH-Konsole direkt bearbeitet werden:
 
 ```bash
 nano /workspace/code/app.py
-```
-
-Danach die Anwendung neu starten:
-
-```bash
-pkill -f "app.py" && bash /start.sh
-```
-
-Mit gesetzter Umgebungsvariable `DEV_RELOAD=1` wird `app.py` bei jeder
-Änderung automatisch neu geladen.
-
-## Modell-Cache
-
-Die Separations-Modelle werden unter `/workspace/cache/torch` gespeichert.
-Liegt `/workspace` auf einem persistenten Volume, werden die Modelle nur
-einmal heruntergeladen.
-
-## Nach dem ersten Start prüfen
-
-```bash
-nvidia-smi
-python -c "import torch; print(torch.cuda.is_available())"
-```
-
-Erwartet: `True` und die GPU-Auslastung steigt während der Trennung.

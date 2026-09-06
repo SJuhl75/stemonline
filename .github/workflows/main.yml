@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-
   workflow_dispatch:
 
 env:
@@ -16,8 +15,8 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: read
-      packages: write
+      contents: write   # Erforderlich, um Git-Tags zu pushen
+      packages: write   # Erforderlich, um zur GHCR zu pushen
 
     steps:
       - name: Checkout repository
@@ -33,16 +32,30 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # Generiert einen 6-stelligen Hex-Code aus dem SHA (z. B. "a3f2b9")
+      - name: Generate short 6-char code
+        id: shortcode
+        run: |
+          echo "code=$(echo ${GITHUB_SHA} | cut -c1-6)" >> "$GITHUB_OUTPUT"
+
+      # Lege ein Git-Tag mit dem Code an, um den Build im Repo zu markieren
+      - name: Tag repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag build-${{ steps.shortcode.outputs.code }}
+          git push origin build-${{ steps.shortcode.outputs.code }}
+
       - name: Build and push Docker image
+        id: build
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
           push: true
-
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
-
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.shortcode.outputs.code }}
+          # Persistenter Cache über GitHub Actions
           cache-from: type=gha
           cache-to: type=gha,mode=max
