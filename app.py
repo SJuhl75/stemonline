@@ -34,8 +34,12 @@ OUTPUT_FORMATS = {
     "DJ-AAC – DDJ-Container": "ddj",
 }
 
-# Liste der Player-Clients, die nacheinander probiert werden (Fallback-Logik)
-YT_CLIENTS = ["mweb", "tv_downgraded"]
+# Erweiterte Liste der YT-Clients (Reihenfolge = Priorität)
+# Die Reihenfolge ist wichtig: Die wahrscheinlichsten Kandidaten zuerst.
+YT_CLIENTS = ["tv_simply", "android_vr", "tv", "web_safari"]
+
+# Optional: Residential Proxy (wird genutzt, falls gesetzt)
+PROXY_URL = os.environ.get("YT_PROXY_URL", "").strip()
 
 
 def run_command(command, cwd=None, description="Befehl"):
@@ -339,12 +343,10 @@ def process_pipeline(
         ]
         info_result = subprocess.run(info_cmd, capture_output=True, text=True, check=False)
 
-        if info_result.returncode in [0, 1]:
-            try:
-                video_info = json.loads(info_result.stdout)
-            except json.JSONDecodeError:
-                return "Fehler: Konnte YouTube-Metadaten nicht lesen.", gr.update(visible=False)
-        else:
+        # WICHTIG: Toleriere Exit-Code 1 und versuche IMMER das JSON zu parsen!
+        try:
+            video_info = json.loads(info_result.stdout)
+        except json.JSONDecodeError:
             return f"Fehler beim Abrufen der YouTube-Daten:\n{info_result.stderr}", gr.update(visible=False)
 
         title = video_info.get('title', 'Unknown Title')
@@ -362,14 +364,13 @@ def process_pipeline(
         }
 
         # ------------------------------------------------------------
-        # 2. Audio mit yt-dlp herunterladen (mit Fallback-Logik)
+        # 2. Audio mit yt-dlp herunterladen (mit Fallback & Proxy)
         # ------------------------------------------------------------
         progress(0.1, desc="Lade Audio von YouTube herunter ...")
 
         download_success = False
         last_error = ""
 
-        # Probiere verschiedene Clients nacheinander aus
         for client in YT_CLIENTS:
             try:
                 yt_cmd = [
@@ -377,13 +378,17 @@ def process_pipeline(
                     "-x", "--audio-format", "flac",
                     "--postprocessor-args", "ExtractAudio:-ar 44100 -ac 2",
                     "--write-thumbnail",
-                    "--extractor-args", f"youtube:player_client={client}",
+                    "--extractor-args", f"youtube:player_client={client};player_skip=webpage,configs",
                     "-o", os.path.join(download_dir, f"{base_filename}.%(ext)s"),
                     youtube_url.strip()
                 ]
+
+                if PROXY_URL:
+                    yt_cmd.extend(["--proxy", PROXY_URL])
+
                 run_command(yt_cmd, description=f"yt-dlp mit Thumbnail (Client: {client})")
                 download_success = True
-                break  # Erfolg! Schleife verlassen
+                break
             except Exception as e:
                 last_error = str(e)
                 print(f"Download mit Client '{client}' fehlgeschlagen. Versuche nächsten Client...")
@@ -482,12 +487,12 @@ def process_pipeline(
         run_command(upload_cmd, description="rclone")
 
         progress(1.0, desc="Pipeline erfolgreich abgeschlossen.")
-        
+
         # WICHTIG: Datei in ein permanentes Verzeichnis kopieren, BEVOR das temporäre Verzeichnis gelöscht wird!
         safe_download_name = "".join(c for c in artifact_filename if c.isalnum() or c in (' ', '-', '_', '.')).strip()
         permanent_path = os.path.join(DOWNLOAD_DIR, safe_download_name)
         shutil.copy2(artifact_path, permanent_path)
-        
+
         return (f"Erfolg!\n\nDatei: {artifact_filename}\nGröße: {artifact_size_mb:.1f} MB\n"
                 f"Modell: {separator_model}\nAusgabeformat: {output_format_label}\n"
                 f"Ziel: {remote_file_path}"), gr.update(visible=True, value=permanent_path)
@@ -496,7 +501,7 @@ def process_pipeline(
         return f"Fehler in der Pipeline:\n\n{exc}", gr.update(visible=False)
 
     finally:
-        # Das temporäre Job-Verzeichnis kann jetzt gefahrlos gelöscht werden, 
+        # Das temporäre Job-Verzeichnis kann jetzt gefahrlos gelöscht werden,
         # da die Datei in DOWNLOAD_DIR gesichert wurde.
         if job_dir and os.path.exists(job_dir):
             shutil.rmtree(job_dir, ignore_errors=True)
@@ -540,7 +545,7 @@ with gr.Blocks(title="YouTube to Traktor / Denon Stem Pipeline") as demo:
 
         with gr.Column():
             status_output = gr.Textbox(label="Status & Log-Ausgabe", interactive=False, lines=20)
-            
+
             # Download-Feld ist standardmäßig unsichtbar!
             download_output = gr.File(label="Download der erzeugten Datei", visible=False)
 
