@@ -8,26 +8,18 @@ APP_FILE="${APP_CODE_DIR}/app.py"
 RCLONE_CONFIG_FILE="/workspace/rclone/rclone.conf"
 MAGENTA_WEBDAV_URL="${MAGENTA_WEBDAV_URL:-https://magentacloud.de/remote.php/webdav/}"
 
-
 echo "=== Starte Stemgen-Pipeline ==="
 
-# Runtime-Codeverzeichnis erstellen
 mkdir -p "${APP_CODE_DIR}"
 mkdir -p "/workspace/jobs"
 mkdir -p "/workspace/cache/torch"
 mkdir -p "/workspace/rclone"
 
-# Standarddateien nur kopieren, wenn im Runtime-Verzeichnis
-# noch keine eigene Version vorhanden ist.
 if [[ ! -f "${APP_FILE}" ]]; then
-    echo "Keine eigene app.py gefunden."
-    echo "Kopiere Standardversion nach ${APP_FILE}"
     cp "${DEFAULT_CODE_DIR}/app.py" "${APP_FILE}"
 fi
 
-# Rclone-Konfiguration erzeugen
-echo "=== Konfiguriere MagentaCloud-WebDAV-Verbindung ==="
-
+# Rclone Konfiguration
 if [[ -z "${MAGENTA_USER:-}" ]]; then
     echo "WARNUNG: MAGENTA_USER ist nicht gesetzt."
 else
@@ -47,61 +39,50 @@ EOF
     fi
 fi
 
-# Starte den Rust POT Provider (für YouTube Bot-Schutz)
+# POT Provider starten
 echo "=== Starte Rust POT Provider (bgutil-pot) ==="
 if command -v bgutil-pot &> /dev/null; then
-    # Starte den Server im Hintergrund auf Port 4416
     bgutil-pot server --host 0.0.0.0 --port 4416 &
     POT_PID=$!
     echo "POT Provider gestartet mit PID ${POT_PID} auf Port 4416."
-    
-    # Kurz warten, bis der Server bereit ist
+
     sleep 2
-    
-    # Healthcheck durchführen
-    if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4416/ping | grep -q 200; then
+
+    # Healthcheck mit wget (curl ist nicht mehr im Image!)
+    if command -v curl &> /dev/null; then
+        STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4416/ping)
+    elif command -v wget &> /dev/null; then
+        STATUS=$(wget -q -O - http://127.0.0.1:4416/ping >/dev/null 2>&1 && echo "200" || echo "000")
+    else
+        STATUS="000"
+    fi
+
+    if [[ "${STATUS}" == "200" ]]; then
         echo "POT Provider Healthcheck erfolgreich."
     else
-        echo "WARNUNG: POT Provider Healthcheck fehlgeschlagen."
+        echo "WARNUNG: POT Provider Healthcheck fehlgeschlagen (Status: ${STATUS})."
     fi
 else
-    echo "WARNUNG: bgutil-pot nicht gefunden. Überspringe Start."
+    echo "WARNUNG: bgutil-pot nicht gefunden."
 fi
 
-# Diagnoseinformationen
+# WICHTIG: Plugin für yt-dlp korrekt verknüpfen!
+# yt-dlp sucht Plugins in ~/.config/yt-dlp/plugins
+mkdir -p /root/.config/yt-dlp/plugins
+if [[ -d /root/yt-dlp-plugins ]]; then
+    ln -sfn /root/yt-dlp-plugins/* /root/.config/yt-dlp/plugins/ 2>/dev/null || true
+    echo "yt-dlp Plugin-Verzeichnis verknüpft."
+fi
+
 echo "=== Installierte Versionen ==="
-
-echo "Python:"
 python --version
-
-echo "PyTorch:"
-python -c "import torch; print(torch.__version__); print('CUDA verfügbar:', torch.cuda.is_available())"
-
-echo "Deno:"
+python -c "import torch; print(torch.__version__); print('CUDA:', torch.cuda.is_available())"
 deno --version
-
-echo "yt-dlp:"
 yt-dlp --version
 
-echo "App-Datei:"
-ls -lh "${APP_FILE}"
-
-echo "App-Codeverzeichnis:"
-ls -la "${APP_CODE_DIR}"
-
 echo "=== Starte Gradio-Anwendung ==="
-
 if [[ "${DEV_RELOAD:-0}" == "1" ]]; then
-    echo "Automatischer Reload ist AKTIV."
-    echo "Änderungen an app.py werden automatisch übernommen."
-
-    exec python -m watchfiles \
-        --filter python \
-        "python ${APP_FILE}" \
-        "${APP_CODE_DIR}"
+    exec python -m watchfiles --filter python "python ${APP_FILE}" "${APP_CODE_DIR}"
 else
-    echo "Automatischer Reload ist deaktiviert."
-    echo "Manueller Neustart erforderlich."
-
     exec python "${APP_FILE}"
 fi

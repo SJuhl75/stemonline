@@ -319,10 +319,25 @@ def process_pipeline(
         os.makedirs(download_dir, exist_ok=True)
         os.makedirs(output_dir, exist_ok=True)
 
+        # ------------------------------------------------------------
+        # 1. YouTube Metadaten abrufen (robust)
+        # ------------------------------------------------------------
         progress(0.05, desc="Rufe YouTube-Metadaten ab ...")
-        info_cmd = ["yt-dlp", "--dump-single-json", "--no-playlist", youtube_url.strip()]
-        info_result = subprocess.run(info_cmd, capture_output=True, text=True, check=True)
-        video_info = json.loads(info_result.stdout)
+        info_cmd = [
+            "yt-dlp", "--dump-single-json", "--no-playlist",
+            "--ignore-no-formats-error", "--no-warnings",
+            youtube_url.strip()
+        ]
+        info_result = subprocess.run(info_cmd, capture_output=True, text=True, check=False)
+
+        # Toleriere Exit-Code 1 (wenn z.B. Formate fehlen, aber Metadaten vorhanden sind)
+        if info_result.returncode in [0, 1]:
+            try:
+                video_info = json.loads(info_result.stdout)
+            except json.JSONDecodeError:
+                return "Fehler: Konnte YouTube-Metadaten nicht lesen.", gr.update(visible=False)
+        else:
+            return f"Fehler beim Abrufen der YouTube-Daten:\n{info_result.stderr}", gr.update(visible=False)
 
         title = video_info.get('title', 'Unknown Title')
         artist = video_info.get('uploader') or video_info.get('creator') or 'Unknown Artist'
@@ -339,9 +354,7 @@ def process_pipeline(
         }
 
         # ------------------------------------------------------------
-        # 2. Audio mit yt-dlp herunterladen (inkl. Thumbnail)
-        # Nutzt automatisch den laufenden Rust-POT-Provider (bgutil-pot)
-        # für die Umgehung der YouTube-Bot-Erkennung.
+        # 2. Audio mit yt-dlp herunterladen (nutzt POT-Provider)
         # ------------------------------------------------------------
         progress(0.1, desc="Lade Audio von YouTube herunter ...")
 
