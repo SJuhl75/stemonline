@@ -59,7 +59,7 @@ RUN apt-get update && \
         /var/lib/apt/lists/* \
         /tmp/*
 
-# Stemgen cli.py patchen
+# Patch 1: Stemgen cli.py patchen (wie gehabt)
 RUN python3.10 - <<'PY'
 from pathlib import Path
 
@@ -78,6 +78,29 @@ text = text.replace(
 
 path.write_text(text)
 print("Stemgen cli.py wurde gepatcht.")
+PY
+
+# Patch 2: encode_stems.py auf Linux-Pfade anpassen
+RUN python3.10 - <<'PY'
+from pathlib import Path
+
+path = Path("/opt/engine-dj-stems-research/encode_stems.py")
+text = path.read_text()
+
+# Alten macOS-Pfad durch den Standard-Befehl ersetzen
+text = text.replace(
+    'FFMPEG4 = "/opt/homebrew/opt/ffmpeg@4/bin/ffmpeg"',
+    'FFMPEG4 = "ffmpeg"'
+)
+
+# Sicherstellen, dass keine weiteren Referenzen auf den Homebrew-Pfad existieren
+text = text.replace(
+    "/opt/homebrew/opt/ffmpeg@4/bin/ffmpeg",
+    "ffmpeg"
+)
+
+path.write_text(text)
+print("encode_stems.py wurde auf Linux-Pfade angepasst.")
 PY
 
 # Pip aktualisieren
@@ -132,7 +155,8 @@ RUN deno --version && \
     ffmpeg -version | head -n 1 && \
     sox --version && \
     rclone version | head -n 1 && \
-    ls -la /opt/engine-dj-stems-research
+    # Prüfen, ob der Patch korrekt angewendet wurde
+    grep -n "FFMPEG4" /opt/engine-dj-stems-research/encode_stems.py | head -n 1
 
 # Verzeichnisse vorbereiten
 RUN mkdir -p \
