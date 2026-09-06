@@ -71,12 +71,23 @@ else
     echo "WARNUNG: bgutil-pot nicht gefunden."
 fi
 
+# --- GPU & PyTorch Diagnose ---
+echo "=== GPU & PyTorch Diagnose ==="
+python - <<'PY'
+import torch, platform
+print("Python Version:", platform.python_version())
+print("GPU Name:", torch.cuda.get_device_name(0))
+print("CUDA Capability:", torch.cuda.get_device_capability(0))
+print("PyTorch Version:", torch.__version__)
+print("CUDA Verfügbar:", torch.cuda.is_available())
+print("Unterstützte Architekturen:", torch.cuda.get_arch_list())
+PY
+
 # --- WireGuard Setup (nur wenn WG_PRIVATE_KEY gesetzt ist) ---
 echo "=== Prüfe WireGuard-Konfiguration ==="
 
 if [[ -n "${WG_PRIVATE_KEY:-}" ]]; then
     echo "WG_PRIVATE_KEY gefunden. Starte WireGuard-Setup..."
-
     if [[ -z "${WG_PUBLIC_KEY:-}" || -z "${WG_ENDPOINT:-}" || -z "${WG_ADDRESS:-}" ]]; then
         echo "❌ Fehler: WG_PUBLIC_KEY, WG_ENDPOINT und WG_ADDRESS müssen gesetzt sein, wenn WG_PRIVATE_KEY gesetzt ist."
         echo "   WireGuard wird übersprungen."

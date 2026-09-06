@@ -23,4 +23,5 @@ For a reliable Europe setup (and to get off the same failing site), I’d priori
 2) EU-CZ-1 (Low, up in less than 5 minutes!)-> Datacenter IP BLACKLISTED @ Youtube
 3) EUR-NO-1 (Low)
 DNU: EUR-IS-2 is wasting money, due to loading hours > 30 Minutes and unexpected interruptions of download!
-SE Blacklisted...
+SE Blacklisted... 
+# EU-NL-1 working!
