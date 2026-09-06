@@ -19,6 +19,10 @@ STEMGEN_DIR = "/opt/stemgen"
 WORK_DIR = "/workspace"
 ENCODE_STEMS_SCRIPT = "/opt/engine-dj-stems-research/encode_stems.py"
 
+# Permanentes Verzeichnis für Downloads
+DOWNLOAD_DIR = "/workspace/downloads"
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
 MODEL_NAMES = {
     "BS RoFormer": "bs_roformer",
     "Demucs": "htdemucs",
@@ -101,11 +105,11 @@ def normalize_audio_file(input_path, output_path, metadata, artwork_path):
     """
     cmd = [
         "ffmpeg", "-y", "-i", input_path,
-        "-i", artwork_path,  # Das Bild als zweite Eingabe hinzufügen
-        "-map", "0:a",      # Audio-Stream aus erster Eingabe
-        "-map", "1:v",      # Video/Image-Stream aus zweiter Eingabe
-        "-c:v", "mjpeg",    # Bild als JPEG-Codec einbetten
-        "-disposition:v:0", "attached_pic", # Als Albumcover markieren
+        "-i", artwork_path,
+        "-map", "0:a",
+        "-map", "1:v",
+        "-c:v", "mjpeg",
+        "-disposition:v:0", "attached_pic",
         "-metadata", f"title={metadata.get('title', 'Unknown Title')}",
         "-metadata", f"artist={metadata.get('artist', 'Unknown Artist')}",
         "-metadata", f"genre={metadata.get('genre', '')}",
@@ -125,21 +129,6 @@ def create_dj_aac_container(
     youtube_url,
     artwork_path
 ):
-    """
-    Erzeugt einen ZIP-Container mit .ddj-Endung.
-
-    Der Container enthält:
-      audio/original.flac
-      stems/vocals.aac
-      stems/melody.aac
-      stems/bass.aac
-      stems/drums.aac
-      track.stems (Native Engine DJ .stems Datei)
-      artwork.png
-      manifest.json
-      README.txt
-    """
-
     archive_path = Path(archive_path)
     package_dir = Path(
         tempfile.mkdtemp(
@@ -155,20 +144,12 @@ def create_dj_aac_container(
         audio_dir.mkdir(parents=True, exist_ok=True)
         stems_dir.mkdir(parents=True, exist_ok=True)
 
-        # Original-FLAC in das Archiv kopieren
         packaged_original = audio_dir / "original.flac"
         shutil.copy2(original_flac_path, packaged_original)
 
-        # Artwork in das Archiv kopieren (falls vorhanden)
         if artwork_path and os.path.exists(artwork_path):
             shutil.copy2(artwork_path, package_dir / "artwork.png")
 
-        # Stemgen erzeugt standardmäßig diese Stream-Reihenfolge:
-        # Stream 0: Master
-        # Stream 1: Drums
-        # Stream 2: Bass
-        # Stream 3: Other
-        # Stream 4: Vocals
         stem_streams = {
             "vocals": 4,
             "melody": 3,
@@ -179,21 +160,12 @@ def create_dj_aac_container(
         packaged_stems = {}
 
         for stem_name, stream_index in stem_streams.items():
-            # Extrahiere als .aac (ADTS)
             output_stem = stems_dir / f"{stem_name}.aac"
 
             extract_cmd = [
-                "ffmpeg",
-                "-hide_banner",
-                "-y",
-                "-i",
-                str(generated_stem_m4a),
-                "-map",
-                f"0:a:{stream_index}",
-                "-c",
-                "copy",
-                "-vn",
-                "-f", "adts",
+                "ffmpeg", "-hide_banner", "-y", "-i", str(generated_stem_m4a),
+                "-map", f"0:a:{stream_index}",
+                "-c", "copy", "-vn", "-f", "adts",
                 str(output_stem),
             ]
 
@@ -211,14 +183,10 @@ def create_dj_aac_container(
                 "size_bytes": output_stem.stat().st_size,
             }
 
-        # ------------------------------------------------------------
-        # Erzeuge die native Engine DJ .stems Datei
-        # ------------------------------------------------------------
         output_stems_path = package_dir / "track.stems"
 
         encode_cmd = [
-            "python3",
-            ENCODE_STEMS_SCRIPT,
+            "python3", ENCODE_STEMS_SCRIPT,
             "--drums", str(stems_dir / "drums.aac"),
             "--bass", str(stems_dir / "bass.aac"),
             "--melody", str(stems_dir / "melody.aac"),
@@ -306,7 +274,6 @@ This file is an intermediate exchange format for testing.
         readme_path = package_dir / "README.txt"
         readme_path.write_text(readme_text, encoding="utf-8")
 
-        # ZIP-Archiv erzeugen
         with zipfile.ZipFile(
             archive_path,
             mode="w",
@@ -334,7 +301,7 @@ def process_pipeline(
     progress=gr.Progress(),
 ):
     if not youtube_url or not youtube_url.strip():
-        return "Bitte gib einen gültigen YouTube-Link ein.", None
+        return "Bitte gib einen gültigen YouTube-Link ein.", gr.update(visible=False)
 
     model_name = MODEL_NAMES.get(separator_model, "bs_roformer")
     output_format = OUTPUT_FORMATS.get(output_format_label, "aac")
@@ -342,7 +309,6 @@ def process_pipeline(
     job_dir = None
 
     try:
-        # 1. Job-Verzeichnisse erstellen
         jobs_dir = os.path.join(WORK_DIR, "jobs")
         os.makedirs(jobs_dir, exist_ok=True)
 
@@ -353,7 +319,6 @@ def process_pipeline(
         os.makedirs(download_dir, exist_ok=True)
         os.makedirs(output_dir, exist_ok=True)
 
-        # 2. YouTube Metadaten abrufen
         progress(0.05, desc="Rufe YouTube-Metadaten ab ...")
         info_cmd = ["yt-dlp", "--dump-single-json", "--no-playlist", youtube_url.strip()]
         info_result = subprocess.run(info_cmd, capture_output=True, text=True, check=True)
@@ -361,10 +326,8 @@ def process_pipeline(
 
         title = video_info.get('title', 'Unknown Title')
         artist = video_info.get('uploader') or video_info.get('creator') or 'Unknown Artist'
-        # Genre oft nur über Tags oder Kanal-Kategorien, hier als Platzhalter
         genre = video_info.get('genre', '')
 
-        # Dateinamen bereinigen
         safe_artist = "".join(c for c in artist if c.isalnum() or c in (' ', '-', '_')).strip()
         safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).strip()
         base_filename = f"{safe_artist} - {safe_title}"
@@ -375,7 +338,6 @@ def process_pipeline(
             "genre": genre
         }
 
-        # 3. Audio mit yt-dlp herunterladen (inkl. Thumbnail)
         progress(0.1, desc="Lade Audio von YouTube herunter ...")
         yt_cmd = [
             "yt-dlp", "--no-playlist", "--js-runtimes", "deno",
@@ -387,16 +349,13 @@ def process_pipeline(
         ]
         run_command(yt_cmd, description="yt-dlp mit Thumbnail")
 
-        # Heruntergeladene FLAC-Datei finden
         downloaded_files = sorted(Path(download_dir).glob(f"{base_filename}*.flac"))
         if not downloaded_files:
-            # Fallback: irgendeine FLAC-Datei suchen
             downloaded_files = sorted(Path(download_dir).glob("*.flac"))
         if not downloaded_files:
-            return "Fehler: Keine FLAC-Datei nach Download gefunden.", None
+            return "Fehler: Keine FLAC-Datei nach Download gefunden.", gr.update(visible=False)
         input_flac_path = str(downloaded_files[0])
 
-        # 4. Artwork finden und auf 600x600 PNG konvertieren
         thumbnail_path = None
         for file in Path(download_dir).glob(f"{base_filename}.*"):
             if file.suffix.lower() in ['.jpg', '.jpeg', '.webp', '.png']:
@@ -413,14 +372,12 @@ def process_pipeline(
                 artwork_path
             ], description="Artwork konvertieren")
 
-        # 5. Optional: Audio normalisieren + Metadaten/Artwork einbetten
         if normalize_audio:
             progress(0.15, desc="Normalisiere Audio und bette Metadaten/Artwork ein ...")
             normalized_path = os.path.join(download_dir, "normalized.flac")
             normalize_audio_file(input_flac_path, normalized_path, metadata, artwork_path)
             input_flac_path = normalized_path
 
-        # 6. Stemgen-Ausgabeformat bestimmen
         stemgen_format = "aac" if output_format == "ddj" else output_format
 
         progress(0.3, desc=f"Erzeuge Stem-Datei mit {separator_model} im {stemgen_format.upper()}-Format ...")
@@ -438,17 +395,15 @@ def process_pipeline(
             output_listing = "\n".join(all_output_files) if all_output_files else "(keine Dateien)"
             return (f"Stemgen wurde beendet, aber keine .stem.m4a-Datei gefunden.\n\n"
                     f"Modell: {separator_model}\nFormat: {stemgen_format.upper()}\n\n"
-                    f"Gefundene Dateien:\n{output_listing}"), None
+                    f"Gefundene Dateien:\n{output_listing}"), gr.update(visible=False)
 
         generated_filename = os.path.basename(generated_m4a)
 
-        # 7. DDJ-Container erzeugen
         if output_format == "ddj":
             progress(0.65, desc="Erzeuge DDJ-Archiv ...")
             archive_basename = Path(generated_filename).name
             if archive_basename.endswith(".stem.m4a"):
                 archive_basename = archive_basename[:-len(".stem.m4a")]
-            # Dateinamen mit Metadaten erweitern
             final_filename = f"{base_filename}.ddj"
             ddj_path = os.path.join(job_dir, final_filename)
 
@@ -464,18 +419,14 @@ def process_pipeline(
             artifact_path = ddj_path
             artifact_filename = os.path.basename(artifact_path)
         else:
-            # Für AAC/ALAC: Metadaten sind bereits in der FLAC (wenn normalisiert) oder wir mappen sie auf die .m4a?
-            # Da Stemgen die .stem.m4a aus der FLAC generiert, sind Tags meist verloren.
-            # Wir können sie mit einem FFmpeg-Befehl nachträglich einbetten.
             artifact_path = generated_m4a
             artifact_filename = generated_filename
 
         if not os.path.exists(artifact_path):
-            return "Fehler: Die finale Ausgabedatei wurde nicht gefunden.", None
+            return "Fehler: Die finale Ausgabedatei wurde nicht gefunden.", gr.update(visible=False)
 
         artifact_size_mb = os.path.getsize(artifact_path) / 1024 / 1024
 
-        # 8. Upload mit rclone
         progress(0.85, desc=f"Lade {artifact_filename} zur MagentaCloud hoch ...")
         if cloud_folder and cloud_folder.strip():
             remote_file_path = f"magentacloud:{cloud_folder.strip('/')}/{artifact_filename}"
@@ -489,14 +440,22 @@ def process_pipeline(
         run_command(upload_cmd, description="rclone")
 
         progress(1.0, desc="Pipeline erfolgreich abgeschlossen.")
+        
+        # WICHTIG: Datei in ein permanentes Verzeichnis kopieren, BEVOR das temporäre Verzeichnis gelöscht wird!
+        safe_download_name = "".join(c for c in artifact_filename if c.isalnum() or c in (' ', '-', '_', '.')).strip()
+        permanent_path = os.path.join(DOWNLOAD_DIR, safe_download_name)
+        shutil.copy2(artifact_path, permanent_path)
+        
         return (f"Erfolg!\n\nDatei: {artifact_filename}\nGröße: {artifact_size_mb:.1f} MB\n"
                 f"Modell: {separator_model}\nAusgabeformat: {output_format_label}\n"
-                f"Ziel: {remote_file_path}"), artifact_path
+                f"Ziel: {remote_file_path}"), gr.update(visible=True, value=permanent_path)
 
     except Exception as exc:
-        return f"Fehler in der Pipeline:\n\n{exc}", None
+        return f"Fehler in der Pipeline:\n\n{exc}", gr.update(visible=False)
 
     finally:
+        # Das temporäre Job-Verzeichnis kann jetzt gefahrlos gelöscht werden, 
+        # da die Datei in DOWNLOAD_DIR gesichert wurde.
         if job_dir and os.path.exists(job_dir):
             shutil.rmtree(job_dir, ignore_errors=True)
 
@@ -538,10 +497,10 @@ with gr.Blocks(title="YouTube to Traktor / Denon Stem Pipeline") as demo:
 
         with gr.Column():
             status_output = gr.Textbox(label="Status & Log-Ausgabe", interactive=False, lines=20)
-            # Datei-Download hinzufügen
-            download_output = gr.File(label="Download der erzeugten Datei")
+            
+            # Download-Feld ist standardmäßig unsichtbar!
+            download_output = gr.File(label="Download der erzeugten Datei", visible=False)
 
-    # Outputs: Status und Datei
     start_btn.click(
         fn=process_pipeline,
         inputs=[yt_link, cloud_dir, separator_model, output_format, normalize_audio],
