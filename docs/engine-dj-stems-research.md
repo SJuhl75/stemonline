@@ -295,3 +295,6 @@ import zipfile
 
 with zipfile.ZipFile("Lgr2WMjvlM8.ddj") as archive:
     archive.extractall("zielordner")
+
+Datei mit einbauen
+ffmpeg -i input.flac -metadata title="Smalltown Boy (Sadrican 2026 Remix)" -metadata artist="Bronski Beat" -metadata genre="Progressive House" output.flac
