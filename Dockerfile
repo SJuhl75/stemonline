@@ -92,7 +92,8 @@ RUN rm -f /usr/lib/python3.12/EXTERNALLY-MANAGED && \
     python -m pip install --no-cache-dir \
         torch==2.7.1 \
         torchaudio==2.7.1 \
-        --index-url https://download.pytorch.org/whl/cu128
+        --index-url https://download.pytorch.org/whl/cu128 \
+        --break-system-packages
 
 # 5. Weitere Abhängigkeiten installieren
 COPY requirements.txt /tmp/requirements.txt
