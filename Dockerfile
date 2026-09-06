@@ -38,7 +38,7 @@ RUN apt-get update && \
         https://github.com/axeldelafosse/stemgen.git \
         /opt/stemgen && \
     git clone --depth 1 \
-        https://github.com/ryan_marsh8186/engine-dj-stems-research.git \
+        https://github.com/danielkinahan/engine-dj-stems-research.git \
         /opt/engine-dj-stems-research && \
     mkdir -p /opt/deno/bin && \
     curl -fL \
@@ -59,7 +59,7 @@ RUN apt-get update && \
         /var/lib/apt/lists/* \
         /tmp/*
 
-# Stemgen cli.py patchen (wie gehabt)
+# Stemgen cli.py patchen
 RUN python3.10 - <<'PY'
 from pathlib import Path
 
