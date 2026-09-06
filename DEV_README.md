@@ -19,7 +19,7 @@ docker run --rm \
 
 # GitHub als Docker-"Provider" für Runpod
 For a reliable Europe setup (and to get off the same failing site), I’d prioritize these datacenters for an RTX 4090 pod:
-1) EU-RO-1 (best current availability signal: Medium)
+1) EU-RO-1 (best current availability signal: Medium) -> Datacenter IP BLACKLISTED @ Youtube
 2) EU-CZ-1 (Low, up in less than 5 minutes!)
 3) EUR-NO-1 (Low)
 DNU: EUR-IS-2 is wasting money, due to loading hours > 30 Minutes and unexpected interruptions of download!

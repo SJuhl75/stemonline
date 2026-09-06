@@ -34,6 +34,10 @@ OUTPUT_FORMATS = {
     "DJ-AAC – DDJ-Container": "ddj",
 }
 
+# Liste der Player-Clients, die nacheinander probiert werden (Fallback-Logik)
+YT_CLIENTS = ["mweb", "tv_downgraded"]
+
+
 def run_command(command, cwd=None, description="Befehl"):
     """Führt einen Prozess aus und gibt bei Fehlern stdout/stderr aus."""
     command_display = " ".join(str(x) for x in command)
@@ -81,9 +85,11 @@ def run_command(command, cwd=None, description="Befehl"):
 
     return result
 
+
 def get_files_recursively(directory):
     """Gibt alle Dateien in einem Verzeichnis rekursiv zurück."""
     return [path for path in Path(directory).rglob("*") if path.is_file()]
+
 
 def find_stemgen_output(output_dir):
     """Sucht die von Stemgen erzeugte .stem.m4a-Datei."""
@@ -97,6 +103,7 @@ def find_stemgen_output(output_dir):
 
     generated_files.sort(key=lambda path: os.path.getsize(path), reverse=True)
     return generated_files[0]
+
 
 def normalize_audio_file(input_path, output_path, metadata, artwork_path):
     """
@@ -119,6 +126,7 @@ def normalize_audio_file(input_path, output_path, metadata, artwork_path):
     ]
     run_command(cmd, description="Audio-Normalisierung & Metadaten/Artwork")
     return output_path
+
 
 def create_dj_aac_container(
     original_flac_path,
@@ -292,6 +300,7 @@ This file is an intermediate exchange format for testing.
     finally:
         shutil.rmtree(package_dir, ignore_errors=True)
 
+
 def process_pipeline(
     youtube_url,
     cloud_folder,
@@ -330,7 +339,6 @@ def process_pipeline(
         ]
         info_result = subprocess.run(info_cmd, capture_output=True, text=True, check=False)
 
-        # Toleriere Exit-Code 1 (wenn z.B. Formate fehlen, aber Metadaten vorhanden sind)
         if info_result.returncode in [0, 1]:
             try:
                 video_info = json.loads(info_result.stdout)
@@ -354,19 +362,34 @@ def process_pipeline(
         }
 
         # ------------------------------------------------------------
-        # 2. Audio mit yt-dlp herunterladen (nutzt POT-Provider)
+        # 2. Audio mit yt-dlp herunterladen (mit Fallback-Logik)
         # ------------------------------------------------------------
         progress(0.1, desc="Lade Audio von YouTube herunter ...")
 
-        yt_cmd = [
-            "yt-dlp", "--no-playlist", "--js-runtimes", "deno",
-            "-x", "--audio-format", "flac",
-            "--postprocessor-args", "ExtractAudio:-ar 44100 -ac 2",
-            "--write-thumbnail",
-            "-o", os.path.join(download_dir, f"{base_filename}.%(ext)s"),
-            youtube_url.strip()
-        ]
-        run_command(yt_cmd, description="yt-dlp mit Thumbnail")
+        download_success = False
+        last_error = ""
+
+        # Probiere verschiedene Clients nacheinander aus
+        for client in YT_CLIENTS:
+            try:
+                yt_cmd = [
+                    "yt-dlp", "--no-playlist", "--js-runtimes", "deno",
+                    "-x", "--audio-format", "flac",
+                    "--postprocessor-args", "ExtractAudio:-ar 44100 -ac 2",
+                    "--write-thumbnail",
+                    "--extractor-args", f"youtube:player_client={client}",
+                    "-o", os.path.join(download_dir, f"{base_filename}.%(ext)s"),
+                    youtube_url.strip()
+                ]
+                run_command(yt_cmd, description=f"yt-dlp mit Thumbnail (Client: {client})")
+                download_success = True
+                break  # Erfolg! Schleife verlassen
+            except Exception as e:
+                last_error = str(e)
+                print(f"Download mit Client '{client}' fehlgeschlagen. Versuche nächsten Client...")
+
+        if not download_success:
+            return f"Fehler: Alle Download-Versuche fehlgeschlagen.\n\n{last_error}", gr.update(visible=False)
 
         downloaded_files = sorted(Path(download_dir).glob(f"{base_filename}*.flac"))
         if not downloaded_files:
@@ -477,6 +500,7 @@ def process_pipeline(
         # da die Datei in DOWNLOAD_DIR gesichert wurde.
         if job_dir and os.path.exists(job_dir):
             shutil.rmtree(job_dir, ignore_errors=True)
+
 
 with gr.Blocks(title="YouTube to Traktor / Denon Stem Pipeline") as demo:
     gr.Markdown("# 🎧 YouTube-to-Stems Pipeline 🎛️")

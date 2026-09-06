@@ -39,8 +39,16 @@ EOF
     fi
 fi
 
-# POT Provider starten
+# --- POT Provider Setup ---
 echo "=== Starte Rust POT Provider (bgutil-pot) ==="
+
+# 1. curl installieren (falls es im Image fehlt)
+if ! command -v curl &> /dev/null; then
+    echo "Installiere curl..."
+    apt-get update -qq && apt-get install -y -qq curl
+fi
+
+# 2. Server starten
 if command -v bgutil-pot &> /dev/null; then
     bgutil-pot server --host 0.0.0.0 --port 4416 &
     POT_PID=$!
@@ -48,15 +56,7 @@ if command -v bgutil-pot &> /dev/null; then
 
     sleep 2
 
-    # Healthcheck mit wget (curl ist nicht mehr im Image!)
-    if command -v curl &> /dev/null; then
-        STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4416/ping)
-    elif command -v wget &> /dev/null; then
-        STATUS=$(wget -q -O - http://127.0.0.1:4416/ping >/dev/null 2>&1 && echo "200" || echo "000")
-    else
-        STATUS="000"
-    fi
-
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4416/ping)
     if [[ "${STATUS}" == "200" ]]; then
         echo "POT Provider Healthcheck erfolgreich."
     else
@@ -66,13 +66,26 @@ else
     echo "WARNUNG: bgutil-pot nicht gefunden."
 fi
 
-# WICHTIG: Plugin für yt-dlp korrekt verknüpfen!
-# yt-dlp sucht Plugins in ~/.config/yt-dlp/plugins
-mkdir -p /root/.config/yt-dlp/plugins
-if [[ -d /root/yt-dlp-plugins ]]; then
-    ln -sfn /root/yt-dlp-plugins/* /root/.config/yt-dlp/plugins/ 2>/dev/null || true
-    echo "yt-dlp Plugin-Verzeichnis verknüpft."
+# --- YouTube IP-Blacklist Check ---
+echo "=== Prüfe YouTube IP-Status ==="
+
+# Testvideo (harmlos, von YouTube selbst: "Me at the zoo")
+TEST_URL="https://www.youtube.com/watch?v=jNQXAC9IVRw"
+# Client für den Test: mweb ist oft toleranter als tv
+TEST_CLIENT="mweb"
+
+# Führe einen Test aus, um zu sehen, ob Metadaten abrufbar sind (ohne Download)
+if yt-dlp --no-playlist --skip-download --no-warnings --retries 0 \
+    --extractor-args "youtube:player_client=${TEST_CLIENT}" \
+    "$TEST_URL" > /dev/null 2>&1; then
+    echo "✅ YouTube-Status: IP scheint derzeit OK zu sein (Client: ${TEST_CLIENT})."
+else
+    echo "❌ YouTube-Status: IP blockiert oder extrem riskant (Client: ${TEST_CLIENT})."
+    echo "   Bitte beachte: Downloads im WebUI könnten fehlschlagen."
+    echo "   Lösung: Nutze einen Residential Proxy oder wechsle die Region."
 fi
+
+# --- Ende Setup ---
 
 echo "=== Installierte Versionen ==="
 python --version
