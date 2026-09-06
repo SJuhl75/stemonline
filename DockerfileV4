@@ -14,12 +14,12 @@ ARG DENO_VERSION=2.9.6
 
 WORKDIR /workspace
 
-# Systemabhängigkeiten installieren (Hinweis: git und curl werden vorübergehend für den Klon-Prozess benötigt)
+# Systemabhängigkeiten installieren
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        python3.11 \
-        python3.11-venv \
+        python3.10 \
         python3-pip \
+        python3.10-venv \
         ca-certificates \
         ffmpeg \
         sox \
@@ -32,20 +32,8 @@ RUN apt-get update && \
         git \
         procps \
         inotify-tools && \
-    ln -sf /usr/bin/python3.11 /usr/bin/python && \
-    ln -sf /usr/bin/python3.11 /usr/bin/python3 && \
+    ln -sf /usr/bin/python3.10 /usr/bin/python && \
     ln -sf /usr/bin/pip3 /usr/bin/pip && \
-    
-    # Rust POT Provider Server installieren
-    curl -fL "https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/releases/latest/download/bgutil-pot-linux-x86_64" -o /usr/local/bin/bgutil-pot && \
-    chmod +x /usr/local/bin/bgutil-pot && \
-
-    # yt-dlp Plugin installieren
-    curl -fL "https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/releases/latest/download/bgutil-ytdlp-pot-provider-rs.zip" -o /tmp/plugin.zip && \
-    mkdir -p /root/yt-dlp-plugins && \
-    unzip -q /tmp/plugin.zip -d /root/yt-dlp-plugins && \
-    rm -f /tmp/plugin.zip && \
-
     git clone --depth 1 \
         https://github.com/axeldelafosse/stemgen.git \
         /opt/stemgen && \
@@ -72,7 +60,7 @@ RUN apt-get update && \
         /tmp/*
 
 # Patch 1: Stemgen cli.py patchen (wie gehabt)
-RUN python3.11 - <<'PY'
+RUN python3.10 - <<'PY'
 from pathlib import Path
 
 path = Path("/opt/stemgen/stemgen/cli.py")
@@ -93,17 +81,19 @@ print("Stemgen cli.py wurde gepatcht.")
 PY
 
 # Patch 2: encode_stems.py auf Linux-Pfade anpassen
-RUN python3.11 - <<'PY'
+RUN python3.10 - <<'PY'
 from pathlib import Path
 
 path = Path("/opt/engine-dj-stems-research/encode_stems.py")
 text = path.read_text()
 
+# Alten macOS-Pfad durch den Standard-Befehl ersetzen
 text = text.replace(
     'FFMPEG4 = "/opt/homebrew/opt/ffmpeg@4/bin/ffmpeg"',
     'FFMPEG4 = "ffmpeg"'
 )
 
+# Sicherstellen, dass keine weiteren Referenzen auf den Homebrew-Pfad existieren
 text = text.replace(
     "/opt/homebrew/opt/ffmpeg@4/bin/ffmpeg",
     "ffmpeg"
@@ -166,9 +156,7 @@ RUN deno --version && \
     sox --version && \
     rclone version | head -n 1 && \
     # Prüfen, ob der Patch korrekt angewendet wurde
-    grep -n "FFMPEG4" /opt/engine-dj-stems-research/encode_stems.py | head -n 1 && \
-    # Prüfen, ob das POT-Plugin korrekt installiert wurde
-    ls -la /root/yt-dlp-plugins
+    grep -n "FFMPEG4" /opt/engine-dj-stems-research/encode_stems.py | head -n 1
 
 # Verzeichnisse vorbereiten
 RUN mkdir -p \

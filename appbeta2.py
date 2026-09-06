@@ -338,18 +338,32 @@ def process_pipeline(
             "genre": genre
         }
 
-        # ------------------------------------------------------------
+        #progress(0.1, desc="Lade Audio von YouTube herunter ...")
+        #yt_cmd = [
+        #    "yt-dlp", "--no-playlist", "--js-runtimes", "deno",
+        #    "-x", "--audio-format", "flac",
+        #    "--postprocessor-args", "ExtractAudio:-ar 44100 -ac 2",
+        #    "--write-thumbnail",
+        #    "-o", os.path.join(download_dir, f"{base_filename}.%(ext)s"),
+        #    youtube_url.strip()
+        #]
+        #run_command(yt_cmd, description="yt-dlp mit Thumbnail")
+                # ------------------------------------------------------------
         # 2. Audio mit yt-dlp herunterladen (inkl. Thumbnail)
-        # Nutzt automatisch den laufenden Rust-POT-Provider (bgutil-pot)
-        # für die Umgehung der YouTube-Bot-Erkennung.
         # ------------------------------------------------------------
         progress(0.1, desc="Lade Audio von YouTube herunter ...")
 
+        # Anpassung für Bot-Erkennung:
+        # - tv: Nutzt den TV-Player-Client, der auf Rechenzentren weniger gesperrt ist.
+        # - player_skip: Überspringt Webpage/Configs, um die Erkennung zu umgehen.
+        # - user-agent: Setzt den User-Agent für den TV-Client.
         yt_cmd = [
             "yt-dlp", "--no-playlist", "--js-runtimes", "deno",
             "-x", "--audio-format", "flac",
             "--postprocessor-args", "ExtractAudio:-ar 44100 -ac 2",
             "--write-thumbnail",
+            "--extractor-args", "youtube:player_client=tv;player_skip=webpage,configs",
+            "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "-o", os.path.join(download_dir, f"{base_filename}.%(ext)s"),
             youtube_url.strip()
         ]

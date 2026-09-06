@@ -19,6 +19,8 @@ mkdir -p "/workspace/rclone"
 
 # Standarddateien nur kopieren, wenn im Runtime-Verzeichnis
 # noch keine eigene Version vorhanden ist.
+#
+# Dadurch bleiben Änderungen über WebSSH erhalten.
 if [[ ! -f "${APP_FILE}" ]]; then
     echo "Keine eigene app.py gefunden."
     echo "Kopiere Standardversion nach ${APP_FILE}"
@@ -47,27 +49,6 @@ EOF
     fi
 fi
 
-# Starte den Rust POT Provider (für YouTube Bot-Schutz)
-echo "=== Starte Rust POT Provider (bgutil-pot) ==="
-if command -v bgutil-pot &> /dev/null; then
-    # Starte den Server im Hintergrund auf Port 4416
-    bgutil-pot server --host 0.0.0.0 --port 4416 &
-    POT_PID=$!
-    echo "POT Provider gestartet mit PID ${POT_PID} auf Port 4416."
-    
-    # Kurz warten, bis der Server bereit ist
-    sleep 2
-    
-    # Healthcheck durchführen
-    if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4416/ping | grep -q 200; then
-        echo "POT Provider Healthcheck erfolgreich."
-    else
-        echo "WARNUNG: POT Provider Healthcheck fehlgeschlagen."
-    fi
-else
-    echo "WARNUNG: bgutil-pot nicht gefunden. Überspringe Start."
-fi
-
 # Diagnoseinformationen
 echo "=== Installierte Versionen ==="
 
@@ -91,6 +72,10 @@ ls -la "${APP_CODE_DIR}"
 
 echo "=== Starte Gradio-Anwendung ==="
 
+# DEV_RELOAD=1 kann in Runpod als Umgebungsvariable gesetzt werden.
+#
+# Dann wird die Python-Anwendung automatisch neu gestartet,
+# sobald app.py im Runtime-Codeverzeichnis geändert wird.
 if [[ "${DEV_RELOAD:-0}" == "1" ]]; then
     echo "Automatischer Reload ist AKTIV."
     echo "Änderungen an app.py werden automatisch übernommen."
