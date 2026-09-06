@@ -35,7 +35,6 @@ OUTPUT_FORMATS = {
 }
 
 # Erweiterte Liste der YT-Clients (Reihenfolge = Priorität)
-# mweb funktionierte in den Tests am zuverlässigsten!
 YT_CLIENTS = ["mweb", "tv_simply", "web"]
 
 # Optional: Residential Proxy (wird genutzt, falls gesetzt)
@@ -139,8 +138,18 @@ def create_dj_aac_container(
     model_label,
     model_name,
     youtube_url,
-    artwork_path
+    artwork_path,
+    metadata
 ):
+    """
+    Erzeugt einen ZIP-Container mit .ddj-Endung.
+
+    Der Container enthält:
+      original.flac (FLAC-Datei mit Metadaten & Artwork)
+      track.stems (Native Engine DJ .stems Datei)
+      manifest.json (Enthält alle Infos, inkl. YouTube-Metadaten)
+    """
+
     archive_path = Path(archive_path)
     package_dir = Path(
         tempfile.mkdtemp(
@@ -150,17 +159,22 @@ def create_dj_aac_container(
     )
 
     try:
-        audio_dir = package_dir / "audio"
-        stems_dir = package_dir / "stems"
-
-        audio_dir.mkdir(parents=True, exist_ok=True)
-        stems_dir.mkdir(parents=True, exist_ok=True)
-
-        packaged_original = audio_dir / "original.flac"
+        # Original-FLAC in das Paket kopieren (ohne Unterordner)
+        packaged_original = package_dir / "original.flac"
         shutil.copy2(original_flac_path, packaged_original)
 
-        if artwork_path and os.path.exists(artwork_path):
-            shutil.copy2(artwork_path, package_dir / "artwork.png")
+        # Artwork wird in die FLAC eingebettet und muss nicht separat gepackt werden.
+        # Falls ein Bild existiert, wird es aber für das Manifest geprüft.
+        artwork_exists = bool(artwork_path and os.path.exists(artwork_path))
+
+        # ------------------------------------------------------------
+        # Erzeuge die native Engine DJ .stems Datei
+        # ------------------------------------------------------------
+        # Die Einzel-AACs werden NICHT mehr in das Archiv gepackt, sondern nur
+        # als temporäre Eingabe für das encode_stems.py Skript genutzt.
+        # Wir extrahieren sie in das temporäre package_dir, das nach dem Zippen gelöscht wird.
+        stems_dir = package_dir / "temp_stems"
+        stems_dir.mkdir(exist_ok=True)
 
         stem_streams = {
             "vocals": 4,
@@ -168,8 +182,6 @@ def create_dj_aac_container(
             "bass": 2,
             "drums": 1,
         }
-
-        packaged_stems = {}
 
         for stem_name, stream_index in stem_streams.items():
             output_stem = stems_dir / f"{stem_name}.aac"
@@ -189,12 +201,6 @@ def create_dj_aac_container(
             if not output_stem.exists():
                 raise RuntimeError(f"Stem-Datei wurde nicht erzeugt: {output_stem}")
 
-            packaged_stems[stem_name] = {
-                "path": f"stems/{stem_name}.aac",
-                "stream_index_source": stream_index,
-                "size_bytes": output_stem.stat().st_size,
-            }
-
         output_stems_path = package_dir / "track.stems"
 
         encode_cmd = [
@@ -211,6 +217,9 @@ def create_dj_aac_container(
         if not output_stems_path.exists():
             raise RuntimeError(f"Die .stems Datei wurde nicht erzeugt: {output_stems_path}")
 
+        # ------------------------------------------------------------
+        # Manifest mit Metadaten
+        # ------------------------------------------------------------
         manifest = {
             "format": "DDJ experimental container",
             "format_version": 1,
@@ -218,7 +227,12 @@ def create_dj_aac_container(
             "created_at_utc": datetime.now(timezone.utc).isoformat(),
             "source": {
                 "youtube_url": youtube_url,
-                "original_file": "audio/original.flac",
+                "original_file": "original.flac",
+            },
+            "metadata": {
+                "title": metadata.get('title', ''),
+                "artist": metadata.get('artist', ''),
+                "genre": metadata.get('genre', '')
             },
             "separation": {
                 "model_label": model_label,
@@ -244,8 +258,7 @@ def create_dj_aac_container(
                     "drums_left", "drums_right",
                 ],
                 "note": "The channel order is an experimental hypothesis and has not yet been confirmed against Engine DJ.",
-            },
-            "stems": packaged_stems,
+            }
         }
 
         manifest_path = package_dir / "manifest.json"
@@ -254,47 +267,19 @@ def create_dj_aac_container(
             encoding="utf-8",
         )
 
-        readme_text = """DDJ experimental container
-
-This file is a ZIP archive with the .ddj extension.
-
-Contents:
-- audio/original.flac
-- stems/vocals.aac
-- stems/melody.aac
-- stems/bass.aac
-- stems/drums.aac
-- track.stems
-- artwork.png
-- manifest.json
-
-The four AAC files contain the separated stems from the
-Native-Instruments Stemgen output.
-
-The track.stems file is a native Engine DJ .stems file
-encoded via the encode_stems.py script (AES-128 encrypted).
-
-The current Engine DJ channel-order hypothesis is:
-
-1. Vocals
-2. Melody / Other
-3. Bass
-4. Drums
-
-This file is an intermediate exchange format for testing.
-"""
-        readme_path = package_dir / "README.txt"
-        readme_path.write_text(readme_text, encoding="utf-8")
-
+        # ------------------------------------------------------------
+        # ZIP-Archiv erzeugen
+        # ------------------------------------------------------------
         with zipfile.ZipFile(
             archive_path,
             mode="w",
             compression=zipfile.ZIP_DEFLATED,
             compresslevel=6,
         ) as archive:
-            for file_path in package_dir.rglob("*"):
-                if file_path.is_file():
-                    archive.write(file_path, file_path.relative_to(package_dir))
+            # Nur die drei gewünschten Dateien packen
+            archive.write(packaged_original, "original.flac")
+            archive.write(output_stems_path, "track.stems")
+            archive.write(manifest_path, "manifest.json")
 
         if not archive_path.exists():
             raise RuntimeError(f"DDJ-Datei wurde nicht erzeugt: {archive_path}")
@@ -462,7 +447,8 @@ def process_pipeline(
                 model_label=separator_model,
                 model_name=model_name,
                 youtube_url=youtube_url.strip(),
-                artwork_path=artwork_path
+                artwork_path=artwork_path,
+                metadata=metadata
             )
             artifact_path = ddj_path
             artifact_filename = os.path.basename(artifact_path)
