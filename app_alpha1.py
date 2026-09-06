@@ -17,7 +17,7 @@ import gradio as gr
 
 STEMGEN_DIR = "/opt/stemgen"
 WORK_DIR = "/workspace"
-ENCODE_STEMS_SCRIPT = "/opt/engine-dj-stems-research/encode_stems.py" # Pfad angepasst
+
 
 MODEL_NAMES = {
     "BS RoFormer": "bs_roformer",
@@ -33,7 +33,9 @@ OUTPUT_FORMATS = {
 
 
 def run_command(command, cwd=None, description="Befehl"):
-    """Führt einen Prozess aus und gibt bei Fehlern stdout/stderr aus."""
+    """
+    Führt einen Prozess aus und gibt bei Fehlern stdout/stderr aus.
+    """
     command_display = " ".join(str(x) for x in command)
 
     print()
@@ -81,12 +83,20 @@ def run_command(command, cwd=None, description="Befehl"):
 
 
 def get_files_recursively(directory):
-    """Gibt alle Dateien in einem Verzeichnis rekursiv zurück."""
-    return [path for path in Path(directory).rglob("*") if path.is_file()]
+    """
+    Gibt alle Dateien in einem Verzeichnis rekursiv zurück.
+    """
+    return [
+        path
+        for path in Path(directory).rglob("*")
+        if path.is_file()
+    ]
 
 
 def find_stemgen_output(output_dir):
-    """Sucht die von Stemgen erzeugte .stem.m4a-Datei."""
+    """
+    Sucht die von Stemgen erzeugte .stem.m4a-Datei.
+    """
     generated_files = glob.glob(
         os.path.join(output_dir, "**", "*.stem.m4a"),
         recursive=True,
@@ -96,27 +106,12 @@ def find_stemgen_output(output_dir):
         return None
 
     # Bei mehreren Treffern die größte Datei verwenden
-    generated_files.sort(key=lambda path: os.path.getsize(path), reverse=True)
+    generated_files.sort(
+        key=lambda path: os.path.getsize(path),
+        reverse=True,
+    )
+
     return generated_files[0]
-
-
-def normalize_audio_file(input_path, output_path):
-    """
-    Normalisiert die Lautstärke des Audios auf einen Zielwert (z.B. -16 LUFS)
-    und stellt sicher, dass die Abtastrate bei 44.1 kHz liegt.
-    """
-    # Der Filter loudnorm ist Teil der ffmpeg-Bibliothek
-    # I=-16: Ziellautstärke in LUFS
-    # TP=-1.5: True Peak Limiter
-    # LRA=11: Loudness Range
-    cmd = [
-        "ffmpeg", "-y", "-i", input_path, 
-        "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", 
-        "-ar", "44100", "-ac", "2",
-        output_path
-    ]
-    run_command(cmd, description="Audio-Normalisierung (loudnorm)")
-    return output_path
 
 
 def create_dj_aac_container(
@@ -132,11 +127,10 @@ def create_dj_aac_container(
 
     Der Container enthält:
       audio/original.flac
-      stems/vocals.aac
-      stems/melody.aac
-      stems/bass.aac
-      stems/drums.aac
-      track.stems (Native Engine DJ .stems Datei)
+      stems/vocals.m4a
+      stems/melody.m4a
+      stems/bass.m4a
+      stems/drums.m4a
       manifest.json
       README.txt
     """
@@ -158,14 +152,23 @@ def create_dj_aac_container(
 
         # Original-FLAC in das Archiv kopieren
         packaged_original = audio_dir / "original.flac"
-        shutil.copy2(original_flac_path, packaged_original)
+        shutil.copy2(
+            original_flac_path,
+            packaged_original,
+        )
 
         # Stemgen erzeugt standardmäßig diese Stream-Reihenfolge:
+        #
         # Stream 0: Master
         # Stream 1: Drums
         # Stream 2: Bass
         # Stream 3: Other
         # Stream 4: Vocals
+        #
+        # Für den DDJ-Container verpacken wir sie in der gewünschten
+        # Engine-DJ-Arbeitshypothese:
+        #
+        # Vocals, Melody/Other, Bass, Drums
         stem_streams = {
             "vocals": 4,
             "melody": 3,
@@ -176,8 +179,7 @@ def create_dj_aac_container(
         packaged_stems = {}
 
         for stem_name, stream_index in stem_streams.items():
-            # Extrahiere als .aac (ADTS), um Overhead zu sparen und es direkt an encode_stems.py zu übergeben
-            output_stem = stems_dir / f"{stem_name}.aac"
+            output_stem = stems_dir / f"{stem_name}.m4a"
 
             extract_cmd = [
                 "ffmpeg",
@@ -190,7 +192,6 @@ def create_dj_aac_container(
                 "-c",
                 "copy",
                 "-vn",
-                "-f", "adts",
                 str(output_stem),
             ]
 
@@ -198,7 +199,7 @@ def create_dj_aac_container(
                 extract_cmd,
                 description=(
                     f"Extrahiere {stem_name}-AAC-Stream "
-                    f"aus Stream {stream_index} als ADTS"
+                    f"aus Stream {stream_index}"
                 ),
             )
 
@@ -208,58 +209,37 @@ def create_dj_aac_container(
                 )
 
             packaged_stems[stem_name] = {
-                "path": f"stems/{stem_name}.aac",
+                "path": f"stems/{stem_name}.m4a",
                 "stream_index_source": stream_index,
                 "size_bytes": output_stem.stat().st_size,
             }
-
-        # ------------------------------------------------------------
-        # Erzeuge die native Engine DJ .stems Datei
-        # ------------------------------------------------------------
-        # Nutze das encode_stems.py Skript aus dem Research-Ordner
-        output_stems_path = package_dir / "track.stems"
-
-        encode_cmd = [
-            "python3",
-            ENCODE_STEMS_SCRIPT,
-            "--drums", str(stems_dir / "drums.aac"),
-            "--bass", str(stems_dir / "bass.aac"),
-            "--melody", str(stems_dir / "melody.aac"),
-            "--vocals", str(stems_dir / "vocals.aac"),
-            str(output_stems_path),
-        ]
-
-        run_command(
-            encode_cmd,
-            description="Generiere native Engine DJ .stems Datei",
-        )
-
-        if not output_stems_path.exists():
-            raise RuntimeError(
-                f"Die .stems Datei wurde nicht erzeugt: {output_stems_path}"
-            )
 
         manifest = {
             "format": "DDJ experimental container",
             "format_version": 1,
             "file_extension": ".ddj",
-            "created_at_utc": datetime.now(timezone.utc).isoformat(),
+            "created_at_utc": datetime.now(
+                timezone.utc
+            ).isoformat(),
+
             "source": {
                 "youtube_url": youtube_url,
                 "original_file": "audio/original.flac",
             },
+
             "separation": {
                 "model_label": model_label,
                 "model_name": model_name,
                 "device": "cuda",
             },
+
             "audio": {
                 "input_format": "FLAC",
-                "stem_format": "AAC-LC",
+                "stem_format": "AAC-LC in M4A",
                 "sample_rate_hz": 44100,
                 "channels_per_stem": 2,
             },
-            "engine_dj_native_file": "track.stems",
+
             "engine_dj_working_hypothesis": {
                 "container": "MP4/M4A",
                 "audio_streams": 1,
@@ -280,12 +260,17 @@ def create_dj_aac_container(
                     "and has not yet been confirmed against Engine DJ."
                 ),
             },
+
             "stems": packaged_stems,
         }
 
         manifest_path = package_dir / "manifest.json"
         manifest_path.write_text(
-            json.dumps(manifest, indent=2, ensure_ascii=False),
+            json.dumps(
+                manifest,
+                indent=2,
+                ensure_ascii=False,
+            ),
             encoding="utf-8",
         )
 
@@ -295,18 +280,14 @@ This file is a ZIP archive with the .ddj extension.
 
 Contents:
 - audio/original.flac
-- stems/vocals.aac
-- stems/melody.aac
-- stems/bass.aac
-- stems/drums.aac
-- track.stems
+- stems/vocals.m4a
+- stems/melody.m4a
+- stems/bass.m4a
+- stems/drums.m4a
 - manifest.json
 
-The four AAC files contain the separated stems from the
+The four M4A files contain AAC-LC audio extracted from the
 Native-Instruments Stemgen output.
-
-The track.stems file is a native Engine DJ .stems file
-encoded via the encode_stems.py script (AES-128 encrypted).
 
 The current Engine DJ channel-order hypothesis is:
 
@@ -315,11 +296,22 @@ The current Engine DJ channel-order hypothesis is:
 3. Bass
 4. Drums
 
-This file is an intermediate exchange format for testing.
+This file is an intermediate exchange format. It is not yet
+a native Engine DJ .stems file.
+
+The later conversion/import script can:
+1. extract original.flac,
+2. move it to the music library,
+3. convert or combine the four stems,
+4. create an Engine-DJ-compatible .stems file,
+5. update the Engine DJ database.
 """
 
         readme_path = package_dir / "README.txt"
-        readme_path.write_text(readme_text, encoding="utf-8")
+        readme_path.write_text(
+            readme_text,
+            encoding="utf-8",
+        )
 
         # ZIP-Archiv erzeugen, aber mit .ddj-Endung speichern
         with zipfile.ZipFile(
@@ -343,7 +335,10 @@ This file is an intermediate exchange format for testing.
         return manifest
 
     finally:
-        shutil.rmtree(package_dir, ignore_errors=True)
+        shutil.rmtree(
+            package_dir,
+            ignore_errors=True,
+        )
 
 
 def process_pipeline(
@@ -351,14 +346,20 @@ def process_pipeline(
     cloud_folder,
     separator_model,
     output_format_label,
-    normalize_audio,
     progress=gr.Progress(),
 ):
     if not youtube_url or not youtube_url.strip():
         return "Bitte gib einen gültigen YouTube-Link ein."
 
-    model_name = MODEL_NAMES.get(separator_model, "bs_roformer")
-    output_format = OUTPUT_FORMATS.get(output_format_label, "aac")
+    model_name = MODEL_NAMES.get(
+        separator_model,
+        "bs_roformer",
+    )
+
+    output_format = OUTPUT_FORMATS.get(
+        output_format_label,
+        "aac",
+    )
 
     job_dir = None
 
@@ -366,20 +367,48 @@ def process_pipeline(
         # ------------------------------------------------------------
         # 1. Job-Verzeichnisse erstellen
         # ------------------------------------------------------------
-        jobs_dir = os.path.join(WORK_DIR, "jobs")
-        os.makedirs(jobs_dir, exist_ok=True)
+        jobs_dir = os.path.join(
+            WORK_DIR,
+            "jobs",
+        )
 
-        job_dir = tempfile.mkdtemp(prefix="stemgen_job_", dir=jobs_dir)
-        download_dir = os.path.join(job_dir, "downloads")
-        output_dir = os.path.join(job_dir, "stems_output")
+        os.makedirs(
+            jobs_dir,
+            exist_ok=True,
+        )
 
-        os.makedirs(download_dir, exist_ok=True)
-        os.makedirs(output_dir, exist_ok=True)
+        job_dir = tempfile.mkdtemp(
+            prefix="stemgen_job_",
+            dir=jobs_dir,
+        )
+
+        download_dir = os.path.join(
+            job_dir,
+            "downloads",
+        )
+
+        output_dir = os.path.join(
+            job_dir,
+            "stems_output",
+        )
+
+        os.makedirs(
+            download_dir,
+            exist_ok=True,
+        )
+
+        os.makedirs(
+            output_dir,
+            exist_ok=True,
+        )
 
         # ------------------------------------------------------------
         # 2. Audio mit yt-dlp herunterladen
         # ------------------------------------------------------------
-        progress(0.1, desc="Lade Audio von YouTube herunter ...")
+        progress(
+            0.1,
+            desc="Lade Audio von YouTube herunter ...",
+        )
 
         yt_cmd = [
             "yt-dlp",
@@ -392,38 +421,52 @@ def process_pipeline(
             "--postprocessor-args",
             "ExtractAudio:-ar 44100 -ac 2",
             "-o",
-            os.path.join(download_dir, "%(id)s.%(ext)s"),
+            os.path.join(
+                download_dir,
+                "%(id)s.%(ext)s",
+            ),
             youtube_url.strip(),
         ]
 
-        run_command(yt_cmd, description="yt-dlp")
+        run_command(
+            yt_cmd,
+            description="yt-dlp",
+        )
 
-        downloaded_files = sorted(Path(download_dir).glob("*.flac"))
+        downloaded_files = sorted(
+            Path(download_dir).glob("*.flac")
+        )
 
         if not downloaded_files:
-            return "Fehler beim Download: yt-dlp hat keine FLAC-Datei erzeugt."
+            return (
+                "Fehler beim Download: "
+                "yt-dlp hat keine FLAC-Datei erzeugt."
+            )
 
-        input_flac_path = str(downloaded_files[0])
-
-        # ------------------------------------------------------------
-        # 2b. Optional: Audio normalisieren
-        # ------------------------------------------------------------
-        if normalize_audio:
-            progress(0.15, desc="Normalisiere Audio-Lautstärke ...")
-            normalized_path = os.path.join(download_dir, "normalized.flac")
-            try:
-                normalize_audio_file(input_flac_path, normalized_path)
-                # Ersetze den Input-Pfad mit der normalisierten Version
-                input_flac_path = normalized_path
-            except Exception as e:
-                print(f"Warnung: Normalisierung fehlgeschlagen, nutze Original: {e}")
+        input_flac_path = str(
+            downloaded_files[0]
+        )
 
         # ------------------------------------------------------------
         # 3. Stemgen-Ausgabeformat bestimmen
         # ------------------------------------------------------------
-        stemgen_format = "aac" if output_format == "ddj" else output_format
+        #
+        # Für DJ-AAC muss Stemgen zunächst AAC erzeugen.
+        # Anschließend werden die vier Einzelstreams aus dem
+        # erzeugten .stem.m4a extrahiert und in das .ddj-Archiv gepackt.
+        stemgen_format = (
+            "aac"
+            if output_format == "ddj"
+            else output_format
+        )
 
-        progress(0.3, desc=f"Erzeuge Stem-Datei mit {separator_model} im {stemgen_format.upper()}-Format ...")
+        progress(
+            0.3,
+            desc=(
+                f"Erzeuge Stem-Datei mit {separator_model} "
+                f"im {stemgen_format.upper()}-Format ..."
+            ),
+        )
 
         stem_cmd = [
             "python",
@@ -440,37 +483,74 @@ def process_pipeline(
             model_name,
         ]
 
-        run_command(stem_cmd, cwd=STEMGEN_DIR, description=f"Stemgen mit {separator_model} und {stemgen_format.upper()}")
+        run_command(
+            stem_cmd,
+            cwd=STEMGEN_DIR,
+            description=(
+                f"Stemgen mit {separator_model} "
+                f"und {stemgen_format.upper()}"
+            ),
+        )
 
-        generated_m4a = find_stemgen_output(output_dir)
+        generated_m4a = find_stemgen_output(
+            output_dir
+        )
 
         if not generated_m4a:
             all_output_files = []
+
             for file_path in get_files_recursively(output_dir):
-                all_output_files.append(os.path.relpath(file_path, output_dir))
+                all_output_files.append(
+                    os.path.relpath(
+                        file_path,
+                        output_dir,
+                    )
+                )
 
-            output_listing = "\n".join(all_output_files) if all_output_files else "(keine Dateien)"
-
-            return (
-                "Stemgen wurde beendet, aber keine .stem.m4a-Datei gefunden.\n\n"
-                f"Modell: {separator_model}\n"
-                f"Format: {stemgen_format.upper()}\n\n"
-                f"Gefundene Dateien:\n{output_listing}"
+            output_listing = (
+                "\n".join(all_output_files)
+                if all_output_files
+                else "(keine Dateien)"
             )
 
-        generated_filename = os.path.basename(generated_m4a)
+            return (
+                "Stemgen wurde beendet, aber keine "
+                ".stem.m4a-Datei gefunden.\n\n"
+                f"Modell: {separator_model}\n"
+                f"Format: {stemgen_format.upper()}\n\n"
+                "Gefundene Dateien:\n"
+                f"{output_listing}"
+            )
+
+        generated_filename = os.path.basename(
+            generated_m4a
+        )
 
         # ------------------------------------------------------------
         # 4. DJ-AAC-DDJ-Container erzeugen
         # ------------------------------------------------------------
         if output_format == "ddj":
-            progress(0.65, desc="Erzeuge DDJ-Archiv mit Original-FLAC, vier AAC-Stem-Dateien und nativer .stems ...")
+            progress(
+                0.65,
+                desc=(
+                    "Erzeuge DDJ-Archiv mit Original-FLAC "
+                    "und vier AAC-Stem-Dateien ..."
+                ),
+            )
 
-            archive_basename = Path(generated_filename).name
+            archive_basename = Path(
+                generated_filename
+            ).name
+
             if archive_basename.endswith(".stem.m4a"):
-                archive_basename = archive_basename[:-len(".stem.m4a")]
+                archive_basename = archive_basename[
+                    :-len(".stem.m4a")
+                ]
 
-            ddj_path = os.path.join(job_dir, f"{archive_basename}.ddj")
+            ddj_path = os.path.join(
+                job_dir,
+                f"{archive_basename}.ddj",
+            )
 
             create_dj_aac_container(
                 original_flac_path=input_flac_path,
@@ -482,26 +562,47 @@ def process_pipeline(
             )
 
             artifact_path = ddj_path
-            artifact_filename = os.path.basename(artifact_path)
+            artifact_filename = os.path.basename(
+                artifact_path
+            )
 
         else:
             artifact_path = generated_m4a
             artifact_filename = generated_filename
 
         if not os.path.exists(artifact_path):
-            return "Fehler: Die finale Ausgabedatei wurde nicht gefunden."
+            return (
+                "Fehler: Die finale Ausgabedatei wurde "
+                "nicht gefunden."
+            )
 
-        artifact_size_mb = os.path.getsize(artifact_path) / 1024 / 1024
+        artifact_size_mb = (
+            os.path.getsize(artifact_path)
+            / 1024
+            / 1024
+        )
 
         # ------------------------------------------------------------
         # 5. Upload mit rclone zur MagentaCloud
         # ------------------------------------------------------------
-        progress(0.85, desc=f"Lade {artifact_filename} zur MagentaCloud hoch ...")
+        progress(
+            0.85,
+            desc=(
+                f"Lade {artifact_filename} "
+                "zur MagentaCloud hoch ..."
+            ),
+        )
 
         if cloud_folder and cloud_folder.strip():
-            remote_file_path = f"magentacloud:{cloud_folder.strip('/')}/{artifact_filename}"
+            remote_file_path = (
+                f"magentacloud:"
+                f"{cloud_folder.strip('/')}/"
+                f"{artifact_filename}"
+            )
         else:
-            remote_file_path = f"magentacloud:{artifact_filename}"
+            remote_file_path = (
+                f"magentacloud:{artifact_filename}"
+            )
 
         upload_cmd = [
             "rclone",
@@ -515,9 +616,15 @@ def process_pipeline(
             "5s",
         ]
 
-        run_command(upload_cmd, description="rclone")
+        run_command(
+            upload_cmd,
+            description="rclone",
+        )
 
-        progress(1.0, desc="Pipeline erfolgreich abgeschlossen.")
+        progress(
+            1.0,
+            desc="Pipeline erfolgreich abgeschlossen.",
+        )
 
         return (
             f"Erfolg!\n\n"
@@ -529,56 +636,110 @@ def process_pipeline(
         )
 
     except Exception as exc:
-        return f"Fehler in der Pipeline:\n\n{exc}"
+        return (
+            "Fehler in der Pipeline:\n\n"
+            f"{exc}"
+        )
 
     finally:
+        # Temporäre Job-Dateien löschen
         if job_dir and os.path.exists(job_dir):
-            shutil.rmtree(job_dir, ignore_errors=True)
+            shutil.rmtree(
+                job_dir,
+                ignore_errors=True,
+            )
 
-with gr.Blocks(title="YouTube to Traktor / Denon Stem Pipeline") as demo:
-    gr.Markdown("# 🎧 YouTube-to-Stems Pipeline 🎛️")
-    gr.Markdown("Lädt Audio von YouTube herunter, erzeugt Stems und lädt das Ergebnis zur MagentaCloud hoch.")
+
+with gr.Blocks(
+    title="YouTube to Traktor / Denon Stem Pipeline"
+) as demo:
+    gr.Markdown(
+        "# 🎧 YouTube-to-Stems Pipeline 🎛️"
+    )
+
+    gr.Markdown(
+        "Lädt Audio von YouTube herunter, erzeugt Stems "
+        "und lädt das Ergebnis zur MagentaCloud hoch."
+    )
+
     gr.Markdown(
         """
 ### Ausgabeformate
 
 - **AAC**: Native-Instruments-Stem-Datei mit AAC-Streams
 - **ALAC**: Native-Instruments-Stem-Datei mit verlustfreien Streams
-- **DJ-AAC**: Experimenteller `.ddj`-Container mit Original-FLAC, vier separaten AAC-Stem-Dateien und nativer `.stems`-Datei
+- **DJ-AAC**: Experimenteller `.ddj`-Container mit Original-FLAC
+  und vier separaten AAC-Stem-Dateien
 """
     )
 
     with gr.Row():
         with gr.Column():
-            yt_link = gr.Textbox(label="YouTube Video Link", placeholder="https://www.youtube.com/watch?v=...")
+            yt_link = gr.Textbox(
+                label="YouTube Video Link",
+                placeholder=(
+                    "https://www.youtube.com/watch?v=..."
+                ),
+            )
+
             separator_model = gr.Radio(
-                choices=["BS RoFormer", "Demucs"],
+                choices=[
+                    "BS RoFormer",
+                    "Demucs",
+                ],
                 value="BS RoFormer",
                 label="Separation-Modell",
-                info="BS RoFormer liefert normalerweise die bessere Qualität. Demucs ist eine Alternative.",
+                info=(
+                    "BS RoFormer liefert normalerweise die "
+                    "bessere Qualität. Demucs ist eine Alternative."
+                ),
             )
+
             output_format = gr.Radio(
-                choices=["AAC – klein und kompatibel", "ALAC – verlustfrei und groß", "DJ-AAC – DDJ-Container"],
+                choices=[
+                    "AAC – klein und kompatibel",
+                    "ALAC – verlustfrei und groß",
+                    "DJ-AAC – DDJ-Container",
+                ],
                 value="DJ-AAC – DDJ-Container",
                 label="Ausgabeformat",
-                info="DJ-AAC erzeugt ein .ddj-ZIP-Archiv mit Original-FLAC, vier AAC-Stem-Dateien und nativer .stems-Datei.",
+                info=(
+                    "DJ-AAC erzeugt ein .ddj-ZIP-Archiv mit "
+                    "Original-FLAC und vier AAC-Stem-Dateien."
+                ),
             )
-            # Neuer Switch für Normalisierung
-            normalize_audio = gr.Checkbox(
-                label="Audio normalisieren (loudnorm)",
-                value=True,
-                info="Aktiviert die Lautstärke-Normalisierung nach dem Download. Empfohlen für konstante Ausgabe.",
+
+            cloud_dir = gr.Textbox(
+                label="MagentaCloud Zielordner",
+                placeholder="Musik/TraktorStems",
+                value="TraktorStems",
             )
-            cloud_dir = gr.Textbox(label="MagentaCloud Zielordner", placeholder="Musik/TraktorStems", value="TraktorStems")
-            start_btn = gr.Button("Pipeline starten", variant="primary")
+
+            start_btn = gr.Button(
+                "Pipeline starten",
+                variant="primary",
+            )
 
         with gr.Column():
-            status_output = gr.Textbox(label="Status & Log-Ausgabe", interactive=False, lines=20)
+            status_output = gr.Textbox(
+                label="Status & Log-Ausgabe",
+                interactive=False,
+                lines=20,
+            )
 
     start_btn.click(
         fn=process_pipeline,
-        inputs=[yt_link, cloud_dir, separator_model, output_format, normalize_audio],
+        inputs=[
+            yt_link,
+            cloud_dir,
+            separator_model,
+            output_format,
+        ],
         outputs=status_output,
     )
 
-demo.launch(server_name="0.0.0.0", server_port=7860)
+
+demo.launch(
+    server_name="0.0.0.0",
+    server_port=7860,
+)

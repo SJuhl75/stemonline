@@ -15,6 +15,9 @@ ARG DENO_VERSION=2.9.6
 WORKDIR /workspace
 
 # Systemabhängigkeiten installieren
+#
+# curl, unzip und git werden nur während des Builds benötigt.
+# Sie werden nach ihrer Verwendung wieder entfernt.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         python3.10 \
@@ -37,9 +40,6 @@ RUN apt-get update && \
     git clone --depth 1 \
         https://github.com/axeldelafosse/stemgen.git \
         /opt/stemgen && \
-    git clone --depth 1 \
-        https://github.com/ryan_marsh8186/engine-dj-stems-research.git \
-        /opt/engine-dj-stems-research && \
     mkdir -p /opt/deno/bin && \
     curl -fL \
         "https://dl.deno.land/release/v${DENO_VERSION}/deno-x86_64-unknown-linux-gnu.zip" \
@@ -59,7 +59,6 @@ RUN apt-get update && \
         /var/lib/apt/lists/* \
         /tmp/*
 
-# Stemgen cli.py patchen (wie gehabt)
 RUN python3.10 - <<'PY'
 from pathlib import Path
 
@@ -96,14 +95,18 @@ RUN python -m pip install \
         --index-url https://download.pytorch.org/whl/cu124
 
 # Python-Anwendungsabhängigkeiten installieren
+#
+# requirements.txt liegt im selben Verzeichnis wie das Dockerfile.
 COPY requirements.txt /tmp/requirements.txt
 
 RUN python -m pip install \
         --no-cache-dir \
-        -r /tmp/requirements.txt \
-        pycryptodome
+        -r /tmp/requirements.txt
 
 # Installation überprüfen
+#
+# CUDA ist während eines normalen Docker-Builds normalerweise nicht verfügbar.
+# Deshalb ist "CUDA während Build verfügbar: False" hier normal.
 RUN python - <<'PY'
 import torch
 import torchaudio
@@ -112,7 +115,6 @@ import gradio
 import yt_dlp
 import bs_roformer
 import watchfiles
-from Crypto.Cipher import AES
 
 print("Torch:", torch.__version__)
 print("TorchAudio:", torchaudio.__version__)
@@ -123,7 +125,6 @@ print("Gradio:", gradio.__version__)
 print("yt-dlp:", yt_dlp.version.__version__)
 print("BS-RoFormer:", bs_roformer.__file__)
 print("watchfiles:", watchfiles.__file__)
-print("PyCryptodome: OK")
 PY
 
 # Systemprogramme überprüfen
@@ -131,10 +132,12 @@ RUN deno --version && \
     yt-dlp --version && \
     ffmpeg -version | head -n 1 && \
     sox --version && \
-    rclone version | head -n 1 && \
-    ls -la /opt/engine-dj-stems-research
+    rclone version | head -n 1
 
 # Verzeichnisse vorbereiten
+#
+# /workspace/code kann später über WebSSH oder ein Runpod-Network-Volume
+# bearbeitet werden.
 RUN mkdir -p \
         /opt/app-defaults \
         /workspace/code \
