@@ -36,7 +36,7 @@ OUTPUT_FORMATS = {
 
 # Erweiterte Liste der YT-Clients (Reihenfolge = Priorität)
 # Die Reihenfolge ist wichtig: Die wahrscheinlichsten Kandidaten zuerst.
-YT_CLIENTS = ["tv_simply", "android_vr", "tv", "web_safari"]
+YT_CLIENTS = ["tv_simply", "tv", "tv_downgraded", "mweb", "web_safari"]
 
 # Optional: Residential Proxy (wird genutzt, falls gesetzt)
 PROXY_URL = os.environ.get("YT_PROXY_URL", "").strip()
@@ -378,7 +378,8 @@ def process_pipeline(
                     "-x", "--audio-format", "flac",
                     "--postprocessor-args", "ExtractAudio:-ar 44100 -ac 2",
                     "--write-thumbnail",
-                    "--extractor-args", f"youtube:player_client={client};player_skip=webpage,configs",
+                    # WICHTIG: player_skip=configs (statt webpage) damit visitor_data geladen wird
+                    "--extractor-args", f"youtube:player_client={client};player_skip=configs",
                     "-o", os.path.join(download_dir, f"{base_filename}.%(ext)s"),
                     youtube_url.strip()
                 ]
