@@ -35,8 +35,8 @@ OUTPUT_FORMATS = {
 }
 
 # Erweiterte Liste der YT-Clients (Reihenfolge = Priorität)
-# Die Reihenfolge ist wichtig: Die wahrscheinlichsten Kandidaten zuerst.
-YT_CLIENTS = ["tv_simply", "tv", "tv_downgraded", "mweb", "web_safari"]
+# mweb funktionierte in den Tests am zuverlässigsten!
+YT_CLIENTS = ["mweb", "tv_simply", "web"]
 
 # Optional: Residential Proxy (wird genutzt, falls gesetzt)
 PROXY_URL = os.environ.get("YT_PROXY_URL", "").strip()
@@ -339,11 +339,11 @@ def process_pipeline(
         info_cmd = [
             "yt-dlp", "--dump-single-json", "--no-playlist",
             "--ignore-no-formats-error", "--no-warnings",
+            "--remote-components", "ejs:github",
             youtube_url.strip()
         ]
         info_result = subprocess.run(info_cmd, capture_output=True, text=True, check=False)
 
-        # WICHTIG: Toleriere Exit-Code 1 und versuche IMMER das JSON zu parsen!
         try:
             video_info = json.loads(info_result.stdout)
         except json.JSONDecodeError:
@@ -375,11 +375,11 @@ def process_pipeline(
             try:
                 yt_cmd = [
                     "yt-dlp", "--no-playlist", "--js-runtimes", "deno",
+                    "--remote-components", "ejs:github",
                     "-x", "--audio-format", "flac",
                     "--postprocessor-args", "ExtractAudio:-ar 44100 -ac 2",
                     "--write-thumbnail",
-                    # WICHTIG: player_skip=configs (statt webpage) damit visitor_data geladen wird
-                    "--extractor-args", f"youtube:player_client={client};player_skip=configs",
+                    "--extractor-args", f"youtube:player_client={client}",
                     "-o", os.path.join(download_dir, f"{base_filename}.%(ext)s"),
                     youtube_url.strip()
                 ]
@@ -489,7 +489,6 @@ def process_pipeline(
 
         progress(1.0, desc="Pipeline erfolgreich abgeschlossen.")
 
-        # WICHTIG: Datei in ein permanentes Verzeichnis kopieren, BEVOR das temporäre Verzeichnis gelöscht wird!
         safe_download_name = "".join(c for c in artifact_filename if c.isalnum() or c in (' ', '-', '_', '.')).strip()
         permanent_path = os.path.join(DOWNLOAD_DIR, safe_download_name)
         shutil.copy2(artifact_path, permanent_path)
@@ -502,8 +501,6 @@ def process_pipeline(
         return f"Fehler in der Pipeline:\n\n{exc}", gr.update(visible=False)
 
     finally:
-        # Das temporäre Job-Verzeichnis kann jetzt gefahrlos gelöscht werden,
-        # da die Datei in DOWNLOAD_DIR gesichert wurde.
         if job_dir and os.path.exists(job_dir):
             shutil.rmtree(job_dir, ignore_errors=True)
 
@@ -546,8 +543,6 @@ with gr.Blocks(title="YouTube to Traktor / Denon Stem Pipeline") as demo:
 
         with gr.Column():
             status_output = gr.Textbox(label="Status & Log-Ausgabe", interactive=False, lines=20)
-
-            # Download-Feld ist standardmäßig unsichtbar!
             download_output = gr.File(label="Download der erzeugten Datei", visible=False)
 
     start_btn.click(
