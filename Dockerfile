@@ -14,12 +14,10 @@ ARG DENO_VERSION=2.9.6
 
 WORKDIR /workspace
 
-# Systemabhängigkeiten installieren
+# 1. Systemabhängigkeiten + Python 3.12 über deadsnakes installieren
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        python3.10 \
-        python3-pip \
-        python3.10-venv \
+        software-properties-common \
         ca-certificates \
         ffmpeg \
         sox \
@@ -32,7 +30,14 @@ RUN apt-get update && \
         git \
         procps \
         inotify-tools && \
-    ln -sf /usr/bin/python3.10 /usr/bin/python && \
+    add-apt-repository ppa:deadsnakes/ppa && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        python3.12 \
+        python3.12-venv \
+        python3-pip && \
+    ln -sf /usr/bin/python3.12 /usr/bin/python && \
+    ln -sf /usr/bin/python3.12 /usr/bin/python3 && \
     ln -sf /usr/bin/pip3 /usr/bin/pip && \
     git clone --depth 1 \
         https://github.com/axeldelafosse/stemgen.git \
@@ -49,134 +54,65 @@ RUN apt-get update && \
     /opt/deno/bin/deno --version && \
     rm -f /tmp/deno.zip && \
     apt-get purge -y \
+        software-properties-common \
         curl \
         unzip \
         git && \
     apt-get autoremove -y && \
     apt-get clean && \
     ldconfig && \
-    rm -rf \
-        /var/lib/apt/lists/* \
-        /tmp/*
+    rm -rf /var/lib/apt/lists/* /tmp/*
 
-# Patch 1: Stemgen cli.py patchen
-RUN python3.10 - <<'PY'
+# 2. Stemgen cli.py patchen
+RUN python3.12 - <<'PY'
 from pathlib import Path
-
 path = Path("/opt/stemgen/stemgen/cli.py")
 text = path.read_text()
-
-text = text.replace(
-    "subprocess.run(stem_args)",
-    "subprocess.run(stem_args, check=True)",
-)
-
-text = text.replace(
-    "        subprocess.run(cmd)\n",
-    "        subprocess.run(cmd, check=True)\n",
-)
-
+text = text.replace("subprocess.run(stem_args)", "subprocess.run(stem_args, check=True)")
+text = text.replace("        subprocess.run(cmd)\n", "        subprocess.run(cmd, check=True)\n")
 path.write_text(text)
 print("Stemgen cli.py wurde gepatcht.")
 PY
 
-# Patch 2: encode_stems.py auf Linux-Pfade anpassen
-RUN python3.10 - <<'PY'
+# 3. encode_stems.py auf Linux-Pfade anpassen
+RUN python3.12 - <<'PY'
 from pathlib import Path
-
 path = Path("/opt/engine-dj-stems-research/encode_stems.py")
 text = path.read_text()
-
-text = text.replace(
-    'FFMPEG4 = "/opt/homebrew/opt/ffmpeg@4/bin/ffmpeg"',
-    'FFMPEG4 = "ffmpeg"'
-)
-
-text = text.replace(
-    "/opt/homebrew/opt/ffmpeg@4/bin/ffmpeg",
-    "ffmpeg"
-)
-
+text = text.replace('FFMPEG4 = "/opt/homebrew/opt/ffmpeg@4/bin/ffmpeg"', 'FFMPEG4 = "ffmpeg"')
+text = text.replace("/opt/homebrew/opt/ffmpeg@4/bin/ffmpeg", "ffmpeg")
 path.write_text(text)
 print("encode_stems.py wurde auf Linux-Pfade angepasst.")
 PY
 
-# Pip aktualisieren
-RUN python -m pip install \
-        --no-cache-dir \
-        --upgrade \
-        pip \
-        setuptools \
-        wheel
-
-# WICHTIG: PyTorch für Blackwell (sm_120) installieren
-# Ab PyTorch 2.7.1 (CUDA 12.8) werden NVIDIA RTX PRO 6000 GPUs (sm_120) unterstützt
-RUN python -m pip install \
-        --no-cache-dir \
+# 4. PyTorch 2.7.1 für Blackwell installieren (CUDA 12.8)
+RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    python -m pip install --no-cache-dir \
         torch==2.7.1 \
         torchaudio==2.7.1 \
         --index-url https://download.pytorch.org/whl/cu128
 
-# Python-Anwendungsabhängigkeiten installieren
+# 5. Weitere Abhängigkeiten installieren
 COPY requirements.txt /tmp/requirements.txt
+RUN python -m pip install --no-cache-dir -r /tmp/requirements.txt pycryptodome
 
-RUN python -m pip install \
-        --no-cache-dir \
-        -r /tmp/requirements.txt \
-        pycryptodome
-
-# Installation überprüfen
+# 6. Verifikation, dass PyTorch und CUDA korrekt sind
 RUN python - <<'PY'
 import torch
-import torchaudio
-import demucs
-import gradio
-import yt_dlp
-import bs_roformer
-import watchfiles
-from Crypto.Cipher import AES
-
-print("Torch:", torch.__version__)
-print("TorchAudio:", torchaudio.__version__)
-print("CUDA-Build:", torch.version.cuda)
-print("CUDA während Build verfügbar:", torch.cuda.is_available())
-print("Demucs:", demucs.__file__)
-print("Gradio:", gradio.__version__)
-print("yt-dlp:", yt_dlp.version.__version__)
-print("BS-RoFormer:", bs_roformer.__file__)
-print("watchfiles:", watchfiles.__file__)
-print("PyCryptodome: OK")
-print("GPU Arch Liste:", torch.cuda.get_arch_list())
+print("PyTorch Version:", torch.__version__)
+print("CUDA Version:", torch.version.cuda)
+print("CUDA verfügbar:", torch.cuda.is_available())
+print("Unterstützte Architekturen:", torch.cuda.get_arch_list())
 PY
 
-# Systemprogramme überprüfen
-RUN deno --version && \
-    yt-dlp --version && \
-    ffmpeg -version | head -n 1 && \
-    sox --version && \
-    rclone version | head -n 1 && \
-    grep -n "FFMPEG4" /opt/engine-dj-stems-research/encode_stems.py | head -n 1
+# 7. Verzeichnisse vorbereiten
+RUN mkdir -p /opt/app-defaults /workspace/code /workspace/cache /workspace/cache/torch /workspace/jobs /workspace/rclone
 
-# Verzeichnisse vorbereiten
-RUN mkdir -p \
-        /opt/app-defaults \
-        /workspace/code \
-        /workspace/cache \
-        /workspace/cache/torch \
-        /workspace/jobs \
-        /workspace/rclone
-
-# Standardcode außerhalb des Runtime-Codeverzeichnisses ablegen
+# 8. App-Dateien kopieren
 COPY app.py /opt/app-defaults/app.py
 COPY start.sh /opt/app-defaults/start.sh
-
-# Startskript ins Image kopieren
 COPY start.sh /start.sh
-
-RUN chmod +x \
-        /start.sh \
-        /opt/app-defaults/start.sh
+RUN chmod +x /start.sh /opt/app-defaults/start.sh
 
 EXPOSE 7860
-
 CMD ["/start.sh"]
