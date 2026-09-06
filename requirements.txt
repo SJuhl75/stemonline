@@ -6,3 +6,4 @@ yt-dlp
 mutagen
 Lossless-BS-RoFormer
 watchfiles
+pycryptodome

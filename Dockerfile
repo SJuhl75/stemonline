@@ -93,12 +93,11 @@ RUN rm -f /usr/lib/python3.12/EXTERNALLY-MANAGED && \
     python -m pip install --no-cache-dir \
         torch==2.7.1 \
         torchaudio==2.7.1 \
-        --index-url https://download.pytorch.org/whl/cu128 \
-        --break-system-packages
+        --index-url https://download.pytorch.org/whl/cu128
 
 # 5. Weitere Abhängigkeiten installieren
 COPY requirements.txt /tmp/requirements.txt
-RUN python -m pip install --no-cache-dir -r /tmp/requirements.txt pycryptodome
+RUN python -m pip install --no-cache-dir -r /tmp/requirements.txt 
 
 # 6. Verifikation, dass PyTorch und CUDA korrekt sind
 RUN python - <<'PY'
