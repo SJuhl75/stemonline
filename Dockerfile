@@ -88,12 +88,13 @@ PY
 
 # 4. PyTorch 2.7.1 für Blackwell installieren (CUDA 12.8)
 # PEP 668: Entfernt die "externally-managed"-Sperre für Container-Builds
-RUN rm -f /usr/lib/python3.12/EXTERNALLY-MANAGED && \
-    python -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
+# WICHTIG: Erst pip upgraden, da --break-system-packages ab pip 23.1 unterstützt wird!
+RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
     python -m pip install --no-cache-dir \
         torch==2.7.1 \
         torchaudio==2.7.1 \
-        --index-url https://download.pytorch.org/whl/cu128
+        --index-url https://download.pytorch.org/whl/cu128 \
+        --break-system-packages
 
 # 5. Weitere Abhängigkeiten installieren
 COPY requirements.txt /tmp/requirements.txt
