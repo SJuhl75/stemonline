@@ -1,10 +1,10 @@
-FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu22.04
+# Wechsel auf das offizielle PyTorch Base-Image (spart Fehlerquellen!)
+FROM pytorch/pytorch:2.7.1-cuda12.8-cudnn9-runtime
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_ROOT_USER_ACTION=ignore \
     DENO_INSTALL=/opt/deno \
     PATH="/opt/deno/bin:${PATH}" \
     TORCH_HOME=/workspace/cache/torch \
@@ -15,10 +15,9 @@ ARG DENO_VERSION=2.9.6
 
 WORKDIR /workspace
 
-# 1. Systemabhängigkeiten + Python 3.12 über deadsnakes installieren
+# 1. Systemabhängigkeiten installieren (ohne Software-Properties-PPA, da Python bereits korrekt ist)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        software-properties-common \
         ca-certificates \
         ffmpeg \
         sox \
@@ -31,15 +30,6 @@ RUN apt-get update && \
         git \
         procps \
         inotify-tools && \
-    add-apt-repository ppa:deadsnakes/ppa && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-        python3.12 \
-        python3.12-venv \
-        python3-pip && \
-    ln -sf /usr/bin/python3.12 /usr/bin/python && \
-    ln -sf /usr/bin/python3.12 /usr/bin/python3 && \
-    ln -sf /usr/bin/pip3 /usr/bin/pip && \
     git clone --depth 1 \
         https://github.com/axeldelafosse/stemgen.git \
         /opt/stemgen && \
@@ -54,18 +44,13 @@ RUN apt-get update && \
     chmod +x /opt/deno/bin/deno && \
     /opt/deno/bin/deno --version && \
     rm -f /tmp/deno.zip && \
-    apt-get purge -y \
-        software-properties-common \
-        curl \
-        unzip \
-        git && \
+    apt-get purge -y curl unzip git && \
     apt-get autoremove -y && \
     apt-get clean && \
-    ldconfig && \
     rm -rf /var/lib/apt/lists/* /tmp/*
 
 # 2. Stemgen cli.py patchen
-RUN python3.12 - <<'PY'
+RUN python - <<'PY'
 from pathlib import Path
 path = Path("/opt/stemgen/stemgen/cli.py")
 text = path.read_text()
@@ -76,7 +61,7 @@ print("Stemgen cli.py wurde gepatcht.")
 PY
 
 # 3. encode_stems.py auf Linux-Pfade anpassen
-RUN python3.12 - <<'PY'
+RUN python - <<'PY'
 from pathlib import Path
 path = Path("/opt/engine-dj-stems-research/encode_stems.py")
 text = path.read_text()
@@ -86,19 +71,11 @@ path.write_text(text)
 print("encode_stems.py wurde auf Linux-Pfade angepasst.")
 PY
 
-# 4. PEP 668 Sperre entfernen und PyTorch 2.7.1 für Blackwell installieren (CUDA 12.8)
-RUN rm -f /usr/lib/python3.12/EXTERNALLY-MANAGED && \
-    python -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    python -m pip install --no-cache-dir \
-        torch==2.7.1+cu128 \
-        torchaudio==2.7.1+cu128 \
-        --index-url https://download.pytorch.org/whl/cu128
-
-# 5. Weitere Abhängigkeiten installieren
+# 4. Weitere Abhängigkeiten installieren (OHNE torch/torchaudio!)
 COPY requirements.txt /tmp/requirements.txt
 RUN python -m pip install --no-cache-dir -r /tmp/requirements.txt pycryptodome
 
-# 6. Verifikation, dass PyTorch und CUDA korrekt sind
+# 5. Verifikation (PyTorch ist jetzt im Image enthalten)
 RUN python - <<'PY'
 import torch
 print("PyTorch Version:", torch.__version__)
@@ -107,10 +84,10 @@ print("CUDA verfügbar:", torch.cuda.is_available())
 print("Unterstützte Architekturen:", torch.cuda.get_arch_list())
 PY
 
-# 7. Verzeichnisse vorbereiten
+# 6. Verzeichnisse vorbereiten
 RUN mkdir -p /opt/app-defaults /workspace/code /workspace/cache /workspace/cache/torch /workspace/jobs /workspace/rclone
 
-# 8. App-Dateien kopieren
+# 7. App-Dateien kopieren
 COPY app.py /opt/app-defaults/app.py
 COPY start.sh /opt/app-defaults/start.sh
 COPY start.sh /start.sh
