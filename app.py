@@ -177,9 +177,9 @@ def create_dj_aac_container(
         stems_dir.mkdir(exist_ok=True)
 
         stem_streams = {
-            "vocals": 3, #4,
+            "vocals": 4, #4,
             "melody": 1, #3,
-            "bass":   4, #2,
+            "bass":   3, #2,
             "drums":  2, #1,
         }
 
