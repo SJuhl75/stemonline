@@ -173,14 +173,15 @@ def create_dj_aac_container(
         # Die Einzel-AACs werden NICHT mehr in das Archiv gepackt, sondern nur
         # als temporäre Eingabe für das encode_stems.py Skript genutzt.
         # Wir extrahieren sie in das temporäre package_dir, das nach dem Zippen gelöscht wird.
+        # 1 = drums, 2 = bass  3 = other (melody) 4 = vocals 
         stems_dir = package_dir / "temp_stems"
         stems_dir.mkdir(exist_ok=True)
 
         stem_streams = {
-            "vocals": 3, #4, #4,
-            "melody": 4, #1, #3,
-            "bass":   1, #3, #2,
-            "drums":  2, # 2 passt!,
+            "vocals": 4, # PAD#1 3/4/4
+            "melody": 3, # PAD#2 4/1/3
+            "bass":   2, # PAD#3 1/3/2
+            "drums":  1, # PAD#4 2/2/2
         }
 
         for stem_name, stream_index in stem_streams.items():
@@ -514,6 +515,11 @@ with gr.Blocks(title="YouTube to Traktor / Denon Stem Pipeline") as demo:
     with gr.Row():
         with gr.Column():
             yt_link = gr.Textbox(label="YouTube Video Link", placeholder="https://www.youtube.com/watch?v=...")
+            normalize_audio = gr.Checkbox(
+                            label="Audio normalisieren", # (loudnorm)",
+                            value=True,
+                            info="Aktiviert die Lautstärke-Normalisierung", # und bettet Titel, Artist, Genre und Cover ein.",
+                        )
             separator_model = gr.Radio(
                 choices=["BS RoFormer", "Demucs"],
                 value="BS RoFormer",
@@ -525,11 +531,6 @@ with gr.Blocks(title="YouTube to Traktor / Denon Stem Pipeline") as demo:
                 value="DJ-AAC – DDJ-Container",
                 label="Ausgabeformat",
                 info="DJ-AAC erzeugt ein .ddj-ZIP-Archiv mit Original-FLAC, vier AAC-Stem-Dateien und nativer .stems-Datei.",
-            )
-            normalize_audio = gr.Checkbox(
-                label="Audio normalisieren (loudnorm)",
-                value=True,
-                info="Aktiviert die Lautstärke-Normalisierung und bettet Titel, Artist, Genre und Cover ein.",
             )
             cloud_dir = gr.Textbox(label="MagentaCloud Zielordner", placeholder="Musik/TraktorStems", value="TraktorStems")
             start_btn = gr.Button("Pipeline starten", variant="primary")
