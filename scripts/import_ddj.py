@@ -5,6 +5,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -216,6 +217,10 @@ def get_track_metadata(manifest, args, original_flac):
     year = args.year or manifest.get("metadata", {}).get("year", 0)
     filename = args.filename or f"{Path(args.input).stem}.flac"
 
+    # Bereinigung des Dateinamens (doppelte Leerzeichen, ungültige Zeichen)
+    filename = re.sub(r'\s+', ' ', filename).strip()
+    filename = re.sub(r'[<>:"/\\|?*]', '', filename)
+
     return {
         "title": str(title),
         "artist": str(artist),
@@ -232,8 +237,28 @@ def get_library_information(connection):
     return row[0]
 
 def get_next_track_id(connection):
-    row = connection.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM Track").fetchone()
-    return int(row[0])
+    """
+    Ermittelt die nächste freie Track-ID.
+    Liest die Sequenz aus sqlite_sequence, um Konflikte mit gelöschten IDs zu vermeiden.
+    """
+    # Prüfe, ob sqlite_sequence existiert (bei AUTOINCREMENT)
+    seq_row = connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='sqlite_sequence'").fetchone()
+    if seq_row:
+        row = connection.execute("SELECT seq FROM sqlite_sequence WHERE name='Track'").fetchone()
+        if row and row[0] is not None:
+            next_id = int(row[0]) + 1
+        else:
+            # Fallback: MAX(id) + 1
+            max_row = connection.execute("SELECT MAX(id) FROM Track").fetchone()
+            next_id = int(max_row[0] or 0) + 1
+            # Sequenz initialisieren
+            connection.execute("INSERT OR REPLACE INTO sqlite_sequence (name, seq) VALUES ('Track', ?)", (next_id,))
+    else:
+        max_row = connection.execute("SELECT MAX(id) FROM Track").fetchone()
+        next_id = int(max_row[0] or 0) + 1
+
+    print(f"Neue Track-ID: {next_id}")
+    return next_id
 
 def insert_track(connection, track_id, metadata, audio_info, path, album_art_id):
     columns = [
@@ -256,6 +281,9 @@ def insert_track(connection, track_id, metadata, audio_info, path, album_art_id)
     placeholders = ", ".join("?" for _ in columns)
     sql = f"INSERT INTO Track ({', '.join(columns)}) VALUES ({placeholders})"
     connection.execute(sql, values)
+
+    # Aktualisiere die Sequenz, falls AUTOINCREMENT verwendet wird
+    connection.execute("INSERT OR REPLACE INTO sqlite_sequence (name, seq) VALUES ('Track', ?)", (track_id,))
 
 def verify_database(connection, track_id):
     integrity = connection.execute("PRAGMA integrity_check").fetchone()
@@ -327,10 +355,17 @@ def import_ddj(args):
         print(f"Kanäle:      {original_info['channels']}")
         print(f"Codec:       {original_info['codec_name']}")
 
-        # Datenbank nur lesen für IDs
+        # Datenbank nur lesen für IDs (und Sequenz-Pflege)
         connection = sqlite3.connect(f"file:{database_path}?mode=ro", uri=True)
         connection.row_factory = sqlite3.Row
+
         library_uuid = get_library_information(connection)
+        # Neue ID bestimmen (schreibender Zugriff für Sequenz ist in ro-Modus nicht möglich,
+        # also speichern wir sie nur für die spätere Verwendung)
+        connection.close()
+
+        # Schreibenden Zugriff für ID-Ermittlung öffnen (damit wir die Sequenz korrekt lesen können)
+        connection = sqlite3.connect(database_path)
         new_track_id = get_next_track_id(connection)
         connection.close()
 
