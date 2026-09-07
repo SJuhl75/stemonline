@@ -178,11 +178,12 @@ def create_dj_aac_container(
         stems_dir.mkdir(exist_ok=True)
 
         stem_streams = {
-            "vocals": 4, # PAD#1 3/4/4
-            "melody": 3, # PAD#2 4/1/3
-            "bass":   2, # PAD#3 1/3/2
-            "drums":  1, # PAD#4 2/2/2
+            "vocals": 1, # PAD#1 4/3/4/4
+            "melody": 2, # PAD#2 3/4/1/3
+            "bass":   3, # PAD#3 2/1/3/2
+            "drums":  4, # PAD#4 1/2/2/2
         }
+        print(f"Stem-Mapping: {stem_streams}")
 
         for stem_name, stream_index in stem_streams.items():
             output_stem = stems_dir / f"{stem_name}.aac"
@@ -193,6 +194,7 @@ def create_dj_aac_container(
                 "-c", "copy", "-vn", "-f", "adts",
                 str(output_stem),
             ]
+            print(f"Extrahiere Stream #{stream_index} als ({stem_name})-AAC-Stream in {output_stem}")
 
             run_command(
                 extract_cmd,
@@ -510,7 +512,7 @@ with gr.Blocks(title="YouTube to Traktor / Denon Stem Pipeline") as demo:
 - **ALAC**: Native-Instruments-Stem-Datei mit verlustfreien Streams
 - **DJ-AAC**: Experimenteller `.ddj`-Container mit Original-FLAC, vier separaten AAC-Stem-Dateien und nativer `.stems`-Datei
 """
-    )
+    )print(f"Arbeitsverzeichnis: {cwd}")
 
     with gr.Row():
         with gr.Column():
