@@ -512,7 +512,7 @@ with gr.Blocks(title="YouTube to Traktor / Denon Stem Pipeline") as demo:
 - **ALAC**: Native-Instruments-Stem-Datei mit verlustfreien Streams
 - **DJ-AAC**: Experimenteller `.ddj`-Container mit Original-FLAC, vier separaten AAC-Stem-Dateien und nativer `.stems`-Datei
 """
-    )print(f"Arbeitsverzeichnis: {cwd}")
+    print(f"Arbeitsverzeichnis: {cwd}")
 
     with gr.Row():
         with gr.Column():
