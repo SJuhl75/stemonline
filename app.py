@@ -399,9 +399,16 @@ def process_pipeline(
         if thumbnail_path:
             artwork_path = os.path.join(download_dir, "artwork.png")
             progress(0.12, desc="Konvertiere Artwork auf 600x600 ...")
+            #run_command([ # Auffüllen mit schwarzen Balken, um 600x600 zu erreichen
+            #    "ffmpeg", "-y", "-i", thumbnail_path,
+            #    "-vf", "scale=600:600:force_original_aspect_ratio=decrease,pad=600:600:(ow-iw)/2:(oh-ih)/2",
+            #    artwork_path
+            #], description="Artwork konvertieren")
             run_command([
                 "ffmpeg", "-y", "-i", thumbnail_path,
-                "-vf", "scale=600:600:force_original_aspect_ratio=decrease,pad=600:600:(ow-iw)/2:(oh-ih)/2",
+                # scale vergrößert das Bild so, dass es den 600x600-Bereich vollständig ausfüllt.
+                # crop schneidet anschließend die überstehenden Seiten ab (mittig).
+                "-vf", "scale=600:600:force_original_aspect_ratio=increase,crop=600:600",
                 artwork_path
             ], description="Artwork konvertieren")
 
