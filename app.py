@@ -168,10 +168,10 @@ def create_dj_aac_container(
         stems_dir.mkdir(exist_ok=True)
 
         stem_streams = {
-            "vocals": 1, #2411
-            "melody": 3, #4232  
-            "bass":   4, #3143
-            "drums":  2, #1324
+            "vocals": 3, #12411
+            "melody": 1, #34232  
+            "bass":   2, #43143
+            "drums":  4, #21324
         }
         print(f"Stem-Mapping: {stem_streams}")
 
