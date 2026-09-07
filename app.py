@@ -159,29 +159,19 @@ def create_dj_aac_container(
     )
 
     try:
-        # Original-FLAC in das Paket kopieren (ohne Unterordner)
         packaged_original = package_dir / "original.flac"
         shutil.copy2(original_flac_path, packaged_original)
 
-        # Artwork wird in die FLAC eingebettet und muss nicht separat gepackt werden.
-        # Falls ein Bild existiert, wird es aber für das Manifest geprüft.
         artwork_exists = bool(artwork_path and os.path.exists(artwork_path))
 
-        # ------------------------------------------------------------
-        # Erzeuge die native Engine DJ .stems Datei
-        # ------------------------------------------------------------
-        # Die Einzel-AACs werden NICHT mehr in das Archiv gepackt, sondern nur
-        # als temporäre Eingabe für das encode_stems.py Skript genutzt.
-        # Wir extrahieren sie in das temporäre package_dir, das nach dem Zippen gelöscht wird.
-        # 1 = drums, 2 = bass  3 = other (melody) 4 = vocals 
         stems_dir = package_dir / "temp_stems"
         stems_dir.mkdir(exist_ok=True)
 
         stem_streams = {
-            "vocals": 1, # PAD#1 4/3/4/4
-            "melody": 2, # PAD#2 3/4/1/3
-            "bass":   3, # PAD#3 2/1/3/2
-            "drums":  4, # PAD#4 1/2/2/2
+            "vocals": 1,
+            "melody": 2,
+            "bass":   3,
+            "drums":  4,
         }
         print(f"Stem-Mapping: {stem_streams}")
 
@@ -220,9 +210,6 @@ def create_dj_aac_container(
         if not output_stems_path.exists():
             raise RuntimeError(f"Die .stems Datei wurde nicht erzeugt: {output_stems_path}")
 
-        # ------------------------------------------------------------
-        # Manifest mit Metadaten
-        # ------------------------------------------------------------
         manifest = {
             "format": "DDJ experimental container",
             "format_version": 1,
@@ -270,16 +257,12 @@ def create_dj_aac_container(
             encoding="utf-8",
         )
 
-        # ------------------------------------------------------------
-        # ZIP-Archiv erzeugen
-        # ------------------------------------------------------------
         with zipfile.ZipFile(
             archive_path,
             mode="w",
             compression=zipfile.ZIP_DEFLATED,
             compresslevel=6,
         ) as archive:
-            # Nur die drei gewünschten Dateien packen
             archive.write(packaged_original, "original.flac")
             archive.write(output_stems_path, "track.stems")
             archive.write(manifest_path, "manifest.json")
@@ -320,9 +303,6 @@ def process_pipeline(
         os.makedirs(download_dir, exist_ok=True)
         os.makedirs(output_dir, exist_ok=True)
 
-        # ------------------------------------------------------------
-        # 1. YouTube Metadaten abrufen (robust)
-        # ------------------------------------------------------------
         progress(0.05, desc="Rufe YouTube-Metadaten ab ...")
         info_cmd = [
             "yt-dlp", "--dump-single-json", "--no-playlist",
@@ -351,9 +331,6 @@ def process_pipeline(
             "genre": genre
         }
 
-        # ------------------------------------------------------------
-        # 2. Audio mit yt-dlp herunterladen (mit Fallback & Proxy)
-        # ------------------------------------------------------------
         progress(0.1, desc="Lade Audio von YouTube herunter ...")
 
         download_success = False
@@ -402,15 +379,8 @@ def process_pipeline(
         if thumbnail_path:
             artwork_path = os.path.join(download_dir, "artwork.png")
             progress(0.12, desc="Konvertiere Artwork auf 600x600 ...")
-            #run_command([ # Auffüllen mit schwarzen Balken, um 600x600 zu erreichen
-            #    "ffmpeg", "-y", "-i", thumbnail_path,
-            #    "-vf", "scale=600:600:force_original_aspect_ratio=decrease,pad=600:600:(ow-iw)/2:(oh-ih)/2",
-            #    artwork_path
-            #], description="Artwork konvertieren")
             run_command([
                 "ffmpeg", "-y", "-i", thumbnail_path,
-                # scale vergrößert das Bild so, dass es den 600x600-Bereich vollständig ausfüllt.
-                # crop schneidet anschließend die überstehenden Seiten ab (mittig).
                 "-vf", "scale=600:600:force_original_aspect_ratio=increase,crop=600:600",
                 artwork_path
             ], description="Artwork konvertieren")
@@ -512,16 +482,16 @@ with gr.Blocks(title="YouTube to Traktor / Denon Stem Pipeline") as demo:
 - **ALAC**: Native-Instruments-Stem-Datei mit verlustfreien Streams
 - **DJ-AAC**: Experimenteller `.ddj`-Container mit Original-FLAC, vier separaten AAC-Stem-Dateien und nativer `.stems`-Datei
 """
-    print(f"Arbeitsverzeichnis: {cwd}")
+    )
 
     with gr.Row():
         with gr.Column():
             yt_link = gr.Textbox(label="YouTube Video Link", placeholder="https://www.youtube.com/watch?v=...")
             normalize_audio = gr.Checkbox(
-                            label="Audio normalisieren", # (loudnorm)",
-                            value=True,
-                            info="Aktiviert die Lautstärke-Normalisierung", # und bettet Titel, Artist, Genre und Cover ein.",
-                        )
+                label="Audio normalisieren",
+                value=True,
+                info="Aktiviert die Lautstärke-Normalisierung",
+            )
             separator_model = gr.Radio(
                 choices=["BS RoFormer", "Demucs"],
                 value="BS RoFormer",
