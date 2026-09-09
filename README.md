@@ -13,6 +13,11 @@ Native-Instruments `.stem.m4a`-Datei als auch eine Engine DJ-kompatible `.stems`
 5. **Paketierung** verpackt alles in einen `.ddj`-Container (für DJ-Systeme)
 6. **rclone** lädt das Ergebnis zu MagentaCloud hoch
 
+## Performance
+Aus einem knapp 7 minütigen Track lassen sich mittels des RoFormer-Modell und einer RTX 3080 in knapp sechs Minuten hochwertige Stems erzeugen, die auf dem Denon DJ PRIME 2 wiedergegeben werden können. Hierzu ist ein kleines Import-Skript notwendig, dass die Stems an die richtigen Stelle kopiert und die erforderlichen Datensätze in der Engine Library erzeugt.
+Alternativ kann dieses Repo mit Runpod verwendet werden; als Docker-Image ist hierzu ghcr.io/sjuhl75/stemonline:<tag>
+anzugeben; für <tag> entweder "latest" oder das neuste Tag ohne das vorangestellte "build-" verwenden.
+
 ## Eingebundene Projekte & Danksagungen
 
 Dieses Projekt wäre ohne die fantastische Arbeit der folgenden Open-Source-Repositories nicht möglich:

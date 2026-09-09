@@ -25,3 +25,12 @@ For a reliable Europe setup (and to get off the same failing site), I’d priori
 DNU: EUR-IS-2 is wasting money, due to loading hours > 30 Minutes and unexpected interruptions of download!
 SE Blacklisted...  FR auch toto
 # EU-NL-1 working!
+
+# Image prüfen
+docker images | grep stemgen
+
+# Exponierte Ports checken
+docker inspect stemgen:test --format '{{json .Config.ExposedPorts}}'
+
+# Starten (Port anpassen)
+docker run -d --name stemgen --gpus all -p 8080:<port> --restart unless-stopped stemgen:test
